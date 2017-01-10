@@ -17,18 +17,13 @@ struct Vertex {
 
 implement_vertex!(Vertex, position);
 
-struct State {
-  frame_number: u32,
-  is_done: bool,
-}
-
 fn draw(
     window: &GlutinFacade,
     vertex_buffer: &VertexBuffer<Vertex>,
     indices: &NoIndices,
     program: &Program,
-    frame_number: u32) {
-  let i = frame_number as f32;
+    frame_number: &mut u32) {
+  let i = *frame_number as f32;
   let r = 0.5 + 0.5 * (i / 17.0).sin();
   let g = 0.5 + 0.5 * (i / 19.0).sin();
   let b = 0.5 + 0.5 * (i / 23.0).sin();
@@ -42,9 +37,9 @@ fn draw(
   target.finish().unwrap();
 }
 
-fn handle_key(key_code: VirtualKeyCode, state: &mut State) {
+fn handle_key(key_code: VirtualKeyCode, done: &mut bool) {
   match key_code {
-    VirtualKeyCode::Escape => state.is_done = true,
+    VirtualKeyCode::Escape => *done = true,
     _ => (),
   }
 }
@@ -97,7 +92,6 @@ fn main() {
 
   let program = glium::Program::from_source(&window, vshader_src, fshader_src, None).unwrap();
 
-
   let v1 = Vertex { position: [-0.5, -0.5] };
   let v2 = Vertex { position: [ 0.0,  0.5] };
   let v3 = Vertex { position: [ 0.5, -0.25] };
@@ -106,19 +100,20 @@ fn main() {
   let vertex_buffer = glium::VertexBuffer::new(&window, &shape).unwrap();
   let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
 
-  let mut state = State { frame_number: 0, is_done: false };
+  let mut frame_number = 0;
+  let mut done = false;
 
-  while !state.is_done {
-    draw(&window, &vertex_buffer, &indices, &program, state.frame_number);
+  while !done {
+    draw(&window, &vertex_buffer, &indices, &program, &mut frame_number);
 
     // listing the events produced by the window and waiting to be received
     for ev in window.poll_events() {
       match ev {
         glium::glutin::Event::Closed => {
-          state.is_done = true;
+          done = true;
         },
         glium::glutin::Event::KeyboardInput(_, _, key_code) => {
-          handle_key(key_code.unwrap(), &mut state);
+          handle_key(key_code.unwrap(), &mut done);
         },
         glium::glutin::Event::Resized(width, height) => {
           println!("resized to {}x{}", width, height);
@@ -127,7 +122,7 @@ fn main() {
       }
     }
 
-    state.frame_number += 1;
+    frame_number += 1;
   }
 
   println!("Exiting...");
