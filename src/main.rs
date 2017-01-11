@@ -1,5 +1,5 @@
-              extern crate cgmath;
-#[macro_use]  extern crate glium;
+extern crate nalgebra;
+#[macro_use] extern crate glium;
 
 use glium::DisplayBuild;
 use glium::Program;
@@ -11,7 +11,7 @@ use glium::index::NoIndices;
 use glium::index::PrimitiveType::TrianglesList;
 use glium::vertex::VertexBuffer;
 
-use cgmath::Matrix4;
+use nalgebra::Matrix4;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -35,9 +35,9 @@ struct Object3d {
 
 fn draw(
     window: &GlutinFacade,
-    object: &Object3d,
-    frame_number: &mut u32) {
-  let i = *frame_number as f32;
+    object: &mut Object3d,
+    frame_number: u32) {
+  let i = frame_number as f32;
   let r = 0.5 + 0.5 * (i / 17.0).sin();
   let g = 0.5 + 0.5 * (i / 19.0).sin();
   let b = 0.5 + 0.5 * (i / 23.0).sin();
@@ -45,13 +45,25 @@ fn draw(
   let mut target = window.draw();
   target.clear_color(r, g, b, 1.0);
 
-  let t = i / 100.0 % 1.0 - 0.5;
+  let x =  if (frame_number / 100) % 2 == 0 { 0.01 } else { -0.01 };
+
+  let translation = Matrix4::new(
+      1.0, 0.0, 0.0, x,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 0.0, 0.0, 1.0);
+
+  object.transform_global *= translation;
 
   match object.mesh {
     Some(ref m) => {
+      let uniforms = uniform! {
+        matrix: *object.transform_global.as_ref(),
+      };
+
       match m.indices {
-        Some(ref i) => target.draw(&m.vertices, i, &m.program, &uniform! { t: t }, &Default::default()).unwrap(),
-        None => target.draw(&m.vertices, &NoIndices(TrianglesList), &m.program, &uniform! { t: t }, &Default::default()).unwrap(),
+        Some(ref i) => target.draw(&m.vertices, i, &m.program, &uniforms, &Default::default()).unwrap(),
+        None => target.draw(&m.vertices, &NoIndices(TrianglesList), &m.program, &uniforms, &Default::default()).unwrap(),
       }
     },
     None => ()
@@ -93,13 +105,10 @@ fn main() {
     #version 140
 
     in vec3 position;
-
-    uniform float t;
+    uniform mat4 matrix;
 
     void main() {
-      vec3 pos = position;
-      pos.x += t;
-      gl_Position = vec4(pos, 1.0);
+      gl_Position = matrix * vec4(position, 1.0);
     }
   "#;
 
@@ -113,7 +122,7 @@ fn main() {
     }
   "#;
 
-  let my_triangle = Object3d {
+  let mut my_triangle = Object3d {
     children: Vec::new(),
     mesh: Some(Mesh {
       indices: None,
@@ -123,15 +132,19 @@ fn main() {
           Vertex { position: [ 0.00,  0.50, 0.00] },
           Vertex { position: [ 0.50, -0.25, 0.00] } ]).unwrap(),
     }),
-    transform_local: Matrix4::from_scale(1.0),
-    transform_global: Matrix4::from_scale(1.0),
+    transform_local: nalgebra::new_identity(4),
+    transform_global: Matrix4::new(
+        1.0, 0.0, 0.0, -0.5,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0),
   };
 
   let mut frame_number = 0;
   let mut done = false;
 
   while !done {
-    draw(&window, &my_triangle, &mut frame_number);
+    draw(&window, &mut my_triangle, frame_number);
 
     // listing the events produced by the window and waiting to be received
     for ev in window.poll_events() {

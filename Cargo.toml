@@ -5,4 +5,4 @@ authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 
 [dependencies]
 glium = "*"
-cgmath = "*"
+nalgebra = "*"
