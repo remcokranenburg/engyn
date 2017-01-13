@@ -35,6 +35,7 @@ use glium::vertex::VertexBuffer;
 use nalgebra::Matrix4;
 
 use teapot::Vertex;
+use teapot::Normal;
 
 #[derive(PartialEq)]
 enum Action {
@@ -44,6 +45,7 @@ enum Action {
 
 struct Mesh {
   pub indices: Option<IndexBuffer<u16>>,
+  pub normals: VertexBuffer<Normal>,
   pub vertices: VertexBuffer<Vertex>,
 }
 
@@ -51,6 +53,11 @@ impl Mesh {
   fn new_quad(window: &GlutinFacade) -> Mesh {
     Mesh {
       indices: Some(IndexBuffer::new(window, PrimitiveType::TriangleStrip, &[1, 2, 0, 3u16]).unwrap()),
+      normals: VertexBuffer::new(window, &[
+          Normal { normal: (0.0, 0.0, 1.0) },
+          Normal { normal: (0.0, 0.0, 1.0) },
+          Normal { normal: (0.0, 0.0, 1.0) },
+          Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
       vertices: VertexBuffer::new(window, &[
           Vertex { position: (-1.0, -1.0, -0.0) },
           Vertex { position: (-1.0,  1.0, -0.0) },
@@ -60,12 +67,12 @@ impl Mesh {
   }
 }
 
-struct Object3d {
+struct Object {
   pub mesh: Option<Mesh>,
   pub transform: Matrix4<f32>,
 }
 
-fn draw(window: &GlutinFacade, program: &Program, world: &mut Vec<Object3d>, frame_number: u32) {
+fn draw(window: &GlutinFacade, program: &Program, world: &mut Vec<Object>, frame_number: u32) {
   let i = frame_number as f32;
   let r = 0.5 + 0.5 * (i / 17.0).sin();
   let g = 0.5 + 0.5 * (i / 19.0).sin();
@@ -92,8 +99,18 @@ fn draw(window: &GlutinFacade, program: &Program, world: &mut Vec<Object3d>, fra
         };
 
         match m.indices {
-          Some(ref indices) => target.draw(&m.vertices, indices, program, &uniforms, &Default::default()).unwrap(),
-          None => target.draw(&m.vertices, NoIndices(PrimitiveType::TrianglesList), program, &uniforms, &Default::default()).unwrap(),
+          Some(ref indices) => target.draw(
+              (&m.vertices, &m.normals),
+              indices,
+              program,
+              &uniforms,
+              &Default::default()).unwrap(),
+          None => target.draw(
+              (&m.vertices, &m.normals),
+              NoIndices(PrimitiveType::TrianglesList),
+              program,
+              &uniforms,
+              &Default::default()).unwrap(),
         }
       },
       None => ()
@@ -121,9 +138,13 @@ fn main() {
     #version 140
 
     in vec3 position;
+    in vec3 normal;
+    out vec3 v_normal;
     uniform mat4 matrix;
+    uniform bool has_normal;
 
     void main() {
+      v_normal = normal;
       gl_Position = matrix * vec4(position, 1.0);
     }
   "#;
@@ -131,10 +152,11 @@ fn main() {
   let fshader_src = r#"
     #version 140
 
+    in vec3 v_normal;
     out vec4 color;
 
     void main() {
-      color = vec4(1.0, 0.0, 0.0, 1.0);
+      color = vec4(v_normal, 1.0);
     }
   "#;
 
@@ -142,9 +164,13 @@ fn main() {
 
   let mut world = Vec::new();
 
-  let my_triangle = Object3d {
+  let my_triangle = Object {
     mesh: Some(Mesh {
       indices: None,
+      normals: VertexBuffer::new(&window, &[
+          Normal { normal: (0.0, 0.0, -1.0) },
+          Normal { normal: (0.0, 0.0, -1.0) },
+          Normal { normal: (0.0, 0.0, -1.0) }]).unwrap(),
       vertices: VertexBuffer::new(&window, &[
           Vertex { position: (-0.50, -0.50, 0.00) },
           Vertex { position: ( 0.00,  0.50, 0.00) },
@@ -158,7 +184,7 @@ fn main() {
 
   world.push(my_triangle);
 
-  let my_floor = Object3d {
+  let my_floor = Object {
     mesh: Some(Mesh::new_quad(&window)),
     transform: Matrix4::new(0.1, 0.0, 0.0, -0.5,
                             0.0, 0.1, 0.0,  0.5,
@@ -168,9 +194,10 @@ fn main() {
 
   world.push(my_floor);
 
-  let my_teapot = Object3d {
+  let my_teapot = Object {
     mesh: Some(Mesh {
       indices: Some(IndexBuffer::new(&window, PrimitiveType::TrianglesList, &teapot::INDICES).unwrap()),
+      normals: VertexBuffer::new(&window, &teapot::NORMALS).unwrap(),
       vertices: VertexBuffer::new(&window, &teapot::VERTICES).unwrap(),
     }),
     transform: Matrix4::new(0.003, 0.00, 0.00, 0.0,
