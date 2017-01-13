@@ -1,5 +1,5 @@
 [package]
-name = "engine-rs"
+name = "engyn"
 version = "0.1.0"
 authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 
