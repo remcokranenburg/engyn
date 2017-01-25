@@ -32,12 +32,25 @@ use glium::glutin::VirtualKeyCode;
 use glium::index::IndexBuffer;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
+use glium::texture::Texture2d;
+use glium::texture::RawImage2d;
 use glium::vertex::VertexBuffer;
 
 use nalgebra::Matrix4;
 
+use std::fs::File;
+use std::io::Cursor;
+use std::io::prelude::*;
+
 use teapot::Vertex;
 use teapot::Normal;
+
+#[derive(Copy, Clone)]
+pub struct Texcoord {
+    pub texcoord: (f32, f32)
+}
+
+implement_vertex!(Texcoord, texcoord);
 
 #[derive(PartialEq)]
 enum Action {
@@ -45,15 +58,19 @@ enum Action {
   Nothing,
 }
 
-struct Mesh {
+struct Geometry {
   pub indices: Option<IndexBuffer<u16>>,
   pub normals: VertexBuffer<Normal>,
   pub vertices: VertexBuffer<Vertex>,
+  pub texcoords: VertexBuffer<Texcoord>,
 }
 
-impl Mesh {
-  fn new_quad(window: &GlutinFacade) -> Mesh {
-    Mesh {
+impl Geometry {
+  fn new_plane(window: &GlutinFacade, width: f32, height: f32) -> Geometry {
+    let width_half = width / 2.0;
+    let height_half = height / 2.0;
+
+    Geometry {
       indices: Some(IndexBuffer::new(window, PrimitiveType::TriangleStrip, &[1, 2, 0, 3u16]).unwrap()),
       normals: VertexBuffer::new(window, &[
           Normal { normal: (0.0, 0.0, 1.0) },
@@ -61,12 +78,50 @@ impl Mesh {
           Normal { normal: (0.0, 0.0, 1.0) },
           Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
       vertices: VertexBuffer::new(window, &[
-          Vertex { position: (-1.0, -1.0, -0.0) },
-          Vertex { position: (-1.0,  1.0, -0.0) },
-          Vertex { position: ( 1.0,  1.0, -0.0) },
-          Vertex { position: ( 1.0, -1.0, -0.0) }]).unwrap(),
+          Vertex { position: (-width_half, -height_half, 0.0) },
+          Vertex { position: (-width_half,  height_half, 0.0) },
+          Vertex { position: ( width_half,  height_half, 0.0) },
+          Vertex { position: ( width_half, -height_half, 0.0) }]).unwrap(),
+      texcoords: VertexBuffer::new(window, &[
+          Texcoord { texcoord: (0.0, 0.0) },
+          Texcoord { texcoord: (0.0, 1.0) },
+          Texcoord { texcoord: (1.0, 1.0) },
+          Texcoord { texcoord: (1.0, 0.0) }]).unwrap(),
     }
   }
+}
+
+struct Material {
+  pub albedo_map: Texture2d,
+  pub metalness: f32,
+  pub reflectivity: f32,
+}
+
+impl Material {
+  fn new(window: &GlutinFacade, albedo_map: &str, metalness: f32, reflectivity: f32) -> Material {
+    fn load_texture(window: &GlutinFacade, filename: &str) -> Texture2d {
+      let mut f = File::open(filename).expect("no such file");
+      let mut buf = Vec::new();
+      f.read_to_end(&mut buf).expect("could not read from file");
+      let image = image::load(Cursor::new(&buf), image::JPEG).unwrap();
+      let image = image.to_rgba();
+      let image_dimensions = image.dimensions();
+      let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
+
+      Texture2d::new(window, image).unwrap()
+    }
+
+    Material {
+      albedo_map: load_texture(window, albedo_map),
+      metalness: metalness,
+      reflectivity: reflectivity,
+    }
+  }
+}
+
+struct Mesh {
+  pub geometry: Geometry,
+  pub material: Material,
 }
 
 struct Object {
@@ -98,17 +153,18 @@ fn draw(window: &GlutinFacade, program: &Program, world: &mut Vec<Object>, frame
       Some(ref m) => {
         let uniforms = uniform! {
           matrix: *object.transform.as_ref(),
+          albedo_map: &m.material.albedo_map,
         };
 
-        match m.indices {
+        match m.geometry.indices {
           Some(ref indices) => target.draw(
-              (&m.vertices, &m.normals),
+              (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
               indices,
               program,
               &uniforms,
               &Default::default()).unwrap(),
           None => target.draw(
-              (&m.vertices, &m.normals),
+              (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
               NoIndices(PrimitiveType::TrianglesList),
               program,
               &uniforms,
@@ -141,11 +197,13 @@ fn main() {
 
     in vec3 position;
     in vec3 normal;
+    in vec2 texcoord;
     out vec3 v_normal;
+    out vec2 v_texcoord;
     uniform mat4 matrix;
-    uniform bool has_normal;
 
     void main() {
+      v_texcoord = texcoord;
       v_normal = normal;
       gl_Position = matrix * vec4(position, 1.0);
     }
@@ -155,10 +213,12 @@ fn main() {
     #version 140
 
     in vec3 v_normal;
+    in vec2 v_texcoord;
     out vec4 color;
+    uniform sampler2D albedo_map;
 
     void main() {
-      color = vec4(v_normal, 1.0);
+      color = texture(albedo_map, v_texcoord);
     }
   "#;
 
@@ -168,15 +228,23 @@ fn main() {
 
   let my_triangle = Object {
     mesh: Some(Mesh {
-      indices: None,
-      normals: VertexBuffer::new(&window, &[
-          Normal { normal: (0.0, 0.0, -1.0) },
-          Normal { normal: (0.0, 0.0, -1.0) },
-          Normal { normal: (0.0, 0.0, -1.0) }]).unwrap(),
-      vertices: VertexBuffer::new(&window, &[
-          Vertex { position: (-0.50, -0.50, 0.00) },
-          Vertex { position: ( 0.00,  0.50, 0.00) },
-          Vertex { position: ( 0.50, -0.25, 0.00) } ]).unwrap(),
+      geometry: Geometry {
+        indices: None,
+        normals: VertexBuffer::new(&window, &[
+            Normal { normal: (0.0, 0.0, 1.0) },
+            Normal { normal: (0.0, 0.0, 1.0) },
+            Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
+        vertices: VertexBuffer::new(&window, &[
+            Vertex { position: (-0.50, -0.50, 0.00) },
+            Vertex { position: ( 0.50, -0.50, 0.00) },
+            Vertex { position: ( 0.00,  0.50, 0.00) } ]).unwrap(),
+        texcoords: VertexBuffer::new(&window, &[
+            Texcoord { texcoord: (0.0, 0.0) },
+            Texcoord { texcoord: (1.0, 0.0) },
+            Texcoord { texcoord: (0.5, 1.0) },
+          ]).unwrap(),
+      },
+      material: Material::new(&window, "data/marble.jpg", 0.0, 0.2),
     }),
     transform: Matrix4::new(1.0, 0.0, 0.0, -0.5,
                             0.0, 1.0, 0.0, -0.5,
@@ -187,7 +255,10 @@ fn main() {
   world.push(my_triangle);
 
   let my_floor = Object {
-    mesh: Some(Mesh::new_quad(&window)),
+    mesh: Some(Mesh {
+      geometry: Geometry::new_plane(&window, 2.0, 2.0),
+      material: Material::new(&window, "data/marble.jpg", 0.0, 0.2),
+    }),
     transform: Matrix4::new(0.1, 0.0, 0.0, -0.5,
                             0.0, 0.1, 0.0,  0.5,
                             0.0, 0.0, 0.1,  0.0,
@@ -196,11 +267,25 @@ fn main() {
 
   world.push(my_floor);
 
+  let my_teapot_texcoords = {
+    let mut texcoords = [Texcoord { texcoord: (0.0, 0.0) }; 531];
+
+    for i in 0..texcoords.len() {
+      texcoords[i].texcoord = rand::random::<(f32, f32)>();
+    }
+
+    texcoords
+  };
+
   let my_teapot = Object {
     mesh: Some(Mesh {
-      indices: Some(IndexBuffer::new(&window, PrimitiveType::TrianglesList, &teapot::INDICES).unwrap()),
-      normals: VertexBuffer::new(&window, &teapot::NORMALS).unwrap(),
-      vertices: VertexBuffer::new(&window, &teapot::VERTICES).unwrap(),
+      geometry: Geometry {
+        indices: Some(IndexBuffer::new(&window, PrimitiveType::TrianglesList, &teapot::INDICES).unwrap()),
+        normals: VertexBuffer::new(&window, &teapot::NORMALS).unwrap(),
+        vertices: VertexBuffer::new(&window, &teapot::VERTICES).unwrap(),
+        texcoords: VertexBuffer::new(&window, &my_teapot_texcoords).unwrap(),
+      },
+      material: Material::new(&window, "data/marble.jpg", 0.0, 0.2),
     }),
     transform: Matrix4::new(0.003, 0.00, 0.00, 0.0,
                             0.00, 0.004, 0.00, 0.0,
