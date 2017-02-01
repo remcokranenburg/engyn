@@ -18,32 +18,46 @@
 
 #[macro_use] extern crate glium;
 extern crate image;
-extern crate nalgebra;
+extern crate cgmath;
 extern crate rand;
+extern crate rust_webvr as webvr;
 
 mod teapot;
 
+use cgmath::*;
+
+use glium::Depth;
+use glium::DepthTest;
 use glium::DisplayBuild;
+use glium::DrawParameters;
+use glium::GlObject;
 use glium::Program;
+use glium::Rect;
 use glium::Surface;
 use glium::backend::glutin_backend::GlutinFacade;
+use glium::framebuffer::DepthRenderBuffer;
+use glium::framebuffer::SimpleFrameBuffer;
+use glium::framebuffer::ToColorAttachment;
+use glium::framebuffer::ToDepthAttachment;
 use glium::glutin::Event;
 use glium::glutin::VirtualKeyCode;
 use glium::index::IndexBuffer;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
-use glium::texture::Texture2d;
+use glium::texture::DepthFormat;
 use glium::texture::RawImage2d;
+use glium::texture::SrgbTexture2d;
+use glium::texture::Texture2d;
 use glium::vertex::VertexBuffer;
 
-use nalgebra::Matrix4;
+use std::path::Path;
 
-use std::fs::File;
-use std::io::Cursor;
-use std::io::prelude::*;
-
-use teapot::Vertex;
 use teapot::Normal;
+use teapot::Vertex;
+
+use webvr::VRDisplayEvent;
+use webvr::VRLayer;
+use webvr::VRServiceManager;
 
 #[derive(Copy, Clone)]
 pub struct Texcoord {
@@ -58,6 +72,13 @@ enum Action {
   Nothing,
 }
 
+fn load_texture(window: &GlutinFacade, name: &str) -> SrgbTexture2d {
+  let image = image::open(&Path::new(&name)).unwrap().to_rgba();
+  let image_dimensions = image.dimensions();
+  let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
+  SrgbTexture2d::new(window, image).unwrap()
+}
+
 struct Geometry {
   pub indices: Option<IndexBuffer<u16>>,
   pub normals: VertexBuffer<Normal>,
@@ -66,12 +87,15 @@ struct Geometry {
 }
 
 impl Geometry {
-  fn new_plane(window: &GlutinFacade, width: f32, height: f32) -> Geometry {
-    let width_half = width / 2.0;
-    let height_half = height / 2.0;
+  fn new_quad(window: &GlutinFacade, size: [f32; 2]) -> Geometry {
+    let width_half = size[0] * 0.5;
+    let height_half = size[1] * 0.5;
 
     Geometry {
-      indices: Some(IndexBuffer::new(window, PrimitiveType::TriangleStrip, &[1, 2, 0, 3u16]).unwrap()),
+      indices: Some(IndexBuffer::new(
+          window,
+          PrimitiveType::TriangleStrip,
+          &[1, 2, 0, 3u16]).unwrap()),
       normals: VertexBuffer::new(window, &[
           Normal { normal: (0.0, 0.0, 1.0) },
           Normal { normal: (0.0, 0.0, 1.0) },
@@ -89,93 +113,63 @@ impl Geometry {
           Texcoord { texcoord: (1.0, 0.0) }]).unwrap(),
     }
   }
-}
 
-struct Material {
-  pub albedo_map: Texture2d,
-  pub metalness: f32,
-  pub reflectivity: f32,
-}
-
-impl Material {
-  fn new(window: &GlutinFacade, albedo_map: &str, metalness: f32, reflectivity: f32) -> Material {
-    fn load_texture(window: &GlutinFacade, filename: &str) -> Texture2d {
-      let mut f = File::open(filename).expect("no such file");
-      let mut buf = Vec::new();
-      f.read_to_end(&mut buf).expect("could not read from file");
-      let image = image::load(Cursor::new(&buf), image::JPEG).unwrap();
-      let image = image.to_rgba();
-      let image_dimensions = image.dimensions();
-      let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
-
-      Texture2d::new(window, image).unwrap()
-    }
-
-    Material {
-      albedo_map: load_texture(window, albedo_map),
-      metalness: metalness,
-      reflectivity: reflectivity,
+  fn borrow_indices<'a>(&'a self) -> Result<&'a IndexBuffer<u16>, &str> {
+    match self.indices {
+      Some(ref x) => Ok(x),
+      None => Err("Nope"),
     }
   }
 }
 
-struct Mesh {
-  pub geometry: Geometry,
-  pub material: Material,
+struct Material<'a> {
+  albedo_map: &'a SrgbTexture2d,
+  metalness: f32,
+  reflectivity: f32,
 }
 
-struct Object {
-  pub mesh: Option<Mesh>,
+struct Mesh<'a> {
+  pub geometry: Geometry,
+  pub material: Material<'a>,
+}
+
+struct Object<'a> {
+  pub mesh: Option<Mesh<'a>>,
   pub transform: Matrix4<f32>,
 }
 
-fn draw(window: &GlutinFacade, program: &Program, world: &mut Vec<Object>, frame_number: u32) {
-  let i = frame_number as f32;
-  let r = 0.5 + 0.5 * (i / 17.0).sin();
-  let g = 0.5 + 0.5 * (i / 19.0).sin();
-  let b = 0.5 + 0.5 * (i / 23.0).sin();
+impl<'a> Object<'a> {
+  fn new_plane(window: &GlutinFacade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
+      rot: [f32;3], scale: [f32;3]) -> Object<'a> {
+    let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
+    let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
+    let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
+    let matrix = translation * scale * rotation;
 
-  let mut target = window.draw();
-  target.clear_color(r, g, b, 1.0);
-
-  for object in world {
-    let x =  if (frame_number / 100) % 2 == 0 { 0.01 } else { -0.01 };
-
-    let translation = Matrix4::new(
-        1.0, 0.0, 0.0, x,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0);
-
-    object.transform *= translation;
-
-    match object.mesh {
-      Some(ref m) => {
-        let uniforms = uniform! {
-          matrix: *object.transform.as_ref(),
-          albedo_map: &m.material.albedo_map,
-        };
-
-        match m.geometry.indices {
-          Some(ref indices) => target.draw(
-              (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
-              indices,
-              program,
-              &uniforms,
-              &Default::default()).unwrap(),
-          None => target.draw(
-              (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
-              NoIndices(PrimitiveType::TrianglesList),
-              program,
-              &uniforms,
-              &Default::default()).unwrap(),
-        }
-      },
-      None => ()
+    Object {
+      mesh: Some(Mesh {
+        geometry: Geometry::new_quad(window, size),
+        material: Material { albedo_map: tex, metalness: 0.0, reflectivity: 0.0 },
+      }),
+      transform: matrix,
     }
   }
+}
 
-  target.finish().unwrap();
+fn vec_to_matrix(m: &[f32; 16]) -> Matrix4<f32> {
+  Matrix4::new(
+      m[0], m[1], m[2], m[3],
+      m[4], m[5], m[6], m[7],
+      m[8], m[9], m[10], m[11],
+      m[12], m[13], m[14], m[15])
+}
+
+fn matrix_to_uniform<'a>(m: &'a Matrix4<f32>) -> &'a [[f32; 4]; 4] {
+  m.as_ref()
+}
+
+fn vec_to_translation(t: &[f32; 3]) -> Matrix4<f32> {
+    Matrix4::from_translation(Vector3::new(t[0], t[1], t[2]))
 }
 
 fn handle_key(key_code: VirtualKeyCode) -> Action {
@@ -186,43 +180,126 @@ fn handle_key(key_code: VirtualKeyCode) -> Action {
 }
 
 fn main() {
+  let mut vr = VRServiceManager::new();
+  vr.register_defaults();
+  vr.initialize_services();
+
+  let displays = vr.get_displays();
+
+  let display = match displays.get(0) {
+    Some(d) => {
+      println!("VR display 0: {}", d.borrow().data().display_name);
+      d
+    },
+    None => {
+      println!("Could not select VR device! Can't continue.");
+      return
+    }
+  };
+
+  let display_data = display.borrow().data();
+
+  let render_width = display_data.left_eye_parameters.render_width;
+  let render_height = display_data.left_eye_parameters.render_height;
+  let window_width = render_width;
+  let window_height = (render_height as f32 * 0.5) as u32;
+
   let window = glium::glutin::WindowBuilder::new()
-    .with_title(format!("Engine"))
+    .with_title(format!("Engyn"))
+    .with_depth_buffer(24)
     .with_vsync()
+    .with_dimensions(window_width, window_height)
     .build_glium()
     .unwrap();
 
-  let vshader_src = r#"
-    #version 140
 
-    in vec3 position;
-    in vec3 normal;
-    in vec2 texcoord;
-    out vec3 v_normal;
-    out vec2 v_texcoord;
-    uniform mat4 matrix;
+  println!("Loading textures...");
+  let empty_tex = load_texture(&window, "data/empty.bmp");
+  let marble_tex = load_texture(&window, "data/marble.jpg");
+  println!("Textures loaded!");
 
-    void main() {
-      v_texcoord = texcoord;
-      v_normal = normal;
-      gl_Position = matrix * vec4(position, 1.0);
-    }
-  "#;
+  let target_texture = Texture2d::empty(&window, render_width * 2, render_height).unwrap();
+  let color_attachment = target_texture.to_color_attachment();
+  let depth_buffer = DepthRenderBuffer::new(&window, DepthFormat::I24, render_width * 2,
+      render_height).unwrap();
+  let depth_attachment = depth_buffer.to_depth_attachment();
+  let mut framebuffer = SimpleFrameBuffer::with_depth_buffer(&window, color_attachment,
+      depth_attachment).unwrap();
 
-  let fshader_src = r#"
-    #version 140
+  let left_viewport = Rect {
+      left: 0,
+      bottom: 0,
+      width: render_width,
+      height: render_height,
+  };
 
-    in vec3 v_normal;
-    in vec2 v_texcoord;
-    out vec4 color;
-    uniform sampler2D albedo_map;
+  let right_viewport = Rect {
+      left: render_width,
+      bottom: 0,
+      width: render_width,
+      height: render_height,
+  };
 
-    void main() {
-      color = texture(albedo_map, v_texcoord);
-    }
-  "#;
+  let render_program = Program::from_source(
+      &window,
+      &r#"
+        #version 140
 
-  let program = Program::from_source(&window, vshader_src, fshader_src, None).unwrap();
+        uniform mat4 projection;
+        uniform mat4 view;
+        uniform mat4 model;
+        in vec3 position;
+        in vec3 normal;
+        in vec2 texcoord;
+        out vec3 v_normal;
+        out vec2 v_texcoord;
+
+        void main() {
+          v_texcoord = texcoord;
+          v_normal = normal;
+          gl_Position = projection * view * model * vec4(position, 1.0);
+        }
+      "#,
+      &r#"
+        #version 140
+
+        uniform sampler2D albedo_map;
+        in vec3 v_normal;
+        in vec2 v_texcoord;
+        out vec4 color;
+
+        void main() {
+          color = texture(albedo_map, v_texcoord);
+        }
+      "#,
+      None).unwrap();
+
+  let compositor_program = Program::from_source(
+      &window,
+      &r#"
+        #version 140
+        uniform mat4 matrix;
+        in vec3 position;
+        in vec2 texcoord;
+        out vec2 v_texcoord;
+        void main() {
+          v_texcoord = texcoord;
+          gl_Position = matrix * vec4(position, 1.0);
+        }
+      "#,
+      &r#"
+        #version 140
+
+        uniform sampler2D sampler;
+
+        in vec2 v_texcoord;
+        out vec4 color;
+
+        void main() {
+          color = texture(sampler, v_texcoord);
+        }
+      "#,
+      None).unwrap();
 
   let mut world = Vec::new();
 
@@ -244,28 +321,27 @@ fn main() {
             Texcoord { texcoord: (0.5, 1.0) },
           ]).unwrap(),
       },
-      material: Material::new(&window, "data/marble.jpg", 0.0, 0.2),
+      material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
-    transform: Matrix4::new(1.0, 0.0, 0.0, -0.5,
-                            0.0, 1.0, 0.0, -0.5,
-                            0.0, 0.0, 1.0,  0.0,
-                            0.0, 0.0, 0.0,  1.0),
+    transform: Matrix4::<f32>::identity(),
   };
 
   world.push(my_triangle);
 
   let my_floor = Object {
     mesh: Some(Mesh {
-      geometry: Geometry::new_plane(&window, 2.0, 2.0),
-      material: Material::new(&window, "data/marble.jpg", 0.0, 0.2),
+      geometry: Geometry::new_quad(&window, [2.0, 2.0]),
+      material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
-    transform: Matrix4::new(0.1, 0.0, 0.0, -0.5,
-                            0.0, 0.1, 0.0,  0.5,
-                            0.0, 0.0, 0.1,  0.0,
-                            0.0, 0.0, 0.0,  1.0),
+    transform: Matrix4::new(0.1, 0.0, 0.0, 0.0,
+                            0.0, 0.1, 0.0, 0.0,
+                            0.0, 0.0, 0.1, 0.0,
+                            0.0, 0.0, 1.0, 1.0),
   };
 
   world.push(my_floor);
+
+  // teapot
 
   let my_teapot_texcoords = {
     let mut texcoords = [Texcoord { texcoord: (0.0, 0.0) }; 531];
@@ -280,27 +356,150 @@ fn main() {
   let my_teapot = Object {
     mesh: Some(Mesh {
       geometry: Geometry {
-        indices: Some(IndexBuffer::new(&window, PrimitiveType::TrianglesList, &teapot::INDICES).unwrap()),
+        indices: Some(IndexBuffer::new(
+            &window,
+            PrimitiveType::TrianglesList,
+            &teapot::INDICES).unwrap()),
         normals: VertexBuffer::new(&window, &teapot::NORMALS).unwrap(),
         vertices: VertexBuffer::new(&window, &teapot::VERTICES).unwrap(),
         texcoords: VertexBuffer::new(&window, &my_teapot_texcoords).unwrap(),
       },
-      material: Material::new(&window, "data/marble.jpg", 0.0, 0.2),
+      material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
-    transform: Matrix4::new(0.003, 0.00, 0.00, 0.0,
-                            0.00, 0.004, 0.00, 0.0,
-                            0.00, 0.00, 0.01, 0.0,
-                            0.00, 0.00, 0.00, 1.0),
+    transform: Matrix4::new(
+        0.005, 0.0, 0.0, 0.0,
+        0.0, 0.005, 0.0, 0.0,
+        0.0, 0.0, 0.005, 0.0,
+        0.0, 1.0, 0.0, 1.0),
   };
 
   world.push(my_teapot);
 
-  let mut frame_number = 0;
+  // empty texture to force glutin clean
+  world.push(Object::new_plane(&window, &empty_tex, [0.0001,0.0001], [-0.1, 0.1, 0.0],
+      [0.0, 0.0, 0.0], [-1.0,1.0,1.0]));
+
+  let fbo_to_screen = Geometry::new_quad(&window, [2.0, 2.0]);
+
+  let mut render_params = DrawParameters {
+    depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
+    .. Default::default()
+  };
+
+  let mut event_counter = 0u64;
 
   loop {
     let mut action = Action::Nothing;
 
-    draw(&window, &program, &mut world, frame_number);
+    display.borrow_mut().sync_poses();
+
+    let display_data = display.borrow().data();
+
+    let standing_transform = if let Some(ref stage) = display_data.stage_parameters {
+        vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
+    } else {
+        // Stage parameters not avaialbe yet or unsupported
+        // Assume 0.75m transform height
+        vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
+    };
+
+    framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
+    let data = display.borrow().synced_frame_data(0.1, 1000.0);
+
+    let left_view_matrix = vec_to_matrix(&data.left_view_matrix);
+    let right_view_matrix = vec_to_matrix(&data.right_view_matrix);
+
+    let eyes = [
+      (&left_viewport, &data.left_projection_matrix, &left_view_matrix),
+      (&right_viewport, &data.right_projection_matrix, &right_view_matrix),
+    ];
+
+    for eye in &eyes {
+      render_params.viewport = Some(*eye.0);
+      let projection = vec_to_matrix(eye.1);
+      let eye_view = eye.2 * standing_transform;
+
+      for object in &*world {
+        match object.mesh {
+          Some(ref m) => {
+            let uniforms = uniform! {
+              projection: *matrix_to_uniform(&projection),
+              view: *matrix_to_uniform(&eye_view),
+              model: *matrix_to_uniform(&object.transform),
+              albedo_map: m.material.albedo_map,
+              metalness: m.material.metalness,
+              reflectivity: m.material.reflectivity,
+            };
+
+            match m.geometry.indices {
+              Some(ref indices) => framebuffer.draw(
+                  (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
+                  indices,
+                  &render_program,
+                  &uniforms,
+                  &render_params).unwrap(),
+              None => framebuffer.draw(
+                  (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
+                  NoIndices(PrimitiveType::TrianglesList),
+                  &render_program,
+                  &uniforms,
+                  &render_params).unwrap(),
+            }
+          },
+          None => (),
+        }
+      }
+    }
+
+    let layer = VRLayer {
+      texture_id: target_texture.get_id(),
+      ..Default::default()
+    };
+
+    display.borrow_mut().submit_frame(&layer);
+
+    // now render to desktop display
+
+    let mut target = window.draw();
+    target.clear_color_and_depth((1.0, 0.0, 0.0, 1.0), 1.0);
+
+    let uniforms = uniform! {
+        matrix: *matrix_to_uniform(&Matrix4::<f32>::identity()),
+        sampler: &target_texture
+    };
+
+    target.draw(
+        (
+            &fbo_to_screen.vertices,
+            &fbo_to_screen.texcoords
+        ),
+        fbo_to_screen.borrow_indices().unwrap(),
+        &compositor_program,
+        &uniforms,
+        &Default::default()).unwrap();
+
+    target.finish().unwrap();
+
+    assert_no_gl_error!(window);
+
+    // once every 100 frames, check for VR events
+    event_counter += 1;
+    if event_counter % 100 == 0 {
+      for event in vr.poll_events() {
+        use VRDisplayEvent::*;
+        match event {
+          Connect(data) => {
+            println!("VR display {}: Connected (name: {})", data.display_id,
+                data.display_name);
+          },
+          Disconnect(display_id) => println!("VR display {}: Disconnected.", display_id),
+          Activate(data, _) => println!("VR display {}: Activated.", data.display_id),
+          Deactivate(data, _) => println!("VR display {}: Deactivated.", data.display_id),
+          _ => println!("VR event: {:?}", event),
+        }
+      }
+    }
 
     for event in window.poll_events() {
       action = match event {
@@ -323,7 +522,5 @@ fn main() {
       },
       Action::Nothing => ()
     };
-
-    frame_number += 1;
   }
 }

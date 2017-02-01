@@ -6,5 +6,6 @@ authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 [dependencies]
 glium = "*"
 image = "*"
-nalgebra = "*"
+cgmath = "*"
 rand = "*"
+rust-webvr = "*"
