@@ -1,9 +1,5 @@
-#[derive(Copy, Clone)]
-pub struct Vertex {
-    pub position: (f32, f32, f32)
-}
-
-implement_vertex!(Vertex, position);
+use geometry::Vertex;
+use geometry::Normal;
 
 pub const VERTICES: [Vertex; 531] = [
     Vertex { position: (0.0, 0.0, 0.0) },   // dummy vector because in the original model indices
@@ -539,13 +535,6 @@ pub const VERTICES: [Vertex; 531] = [
     Vertex { position: (31.1507, 30.8773, -14.0083) },
     Vertex { position: (34.9202, 28.3457, -15.6121) }
 ];
-
-#[derive(Copy, Clone)]
-pub struct Normal {
-    pub normal: (f32, f32, f32)
-}
-
-implement_vertex!(Normal, normal);
 
 pub const NORMALS: [Normal; 531] = [
     Normal { normal: (0.0, 0.0, 0.0) },     // dummy vector because in the original model indices

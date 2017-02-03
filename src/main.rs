@@ -22,10 +22,16 @@ extern crate cgmath;
 extern crate rand;
 extern crate rust_webvr as webvr;
 
+mod geometry;
+mod material;
+mod mesh;
+mod object;
 mod teapot;
 
-use cgmath::*;
-
+use cgmath::Matrix4;
+use cgmath::SquareMatrix;
+use cgmath::Transform;
+use cgmath::Vector3;
 use glium::Depth;
 use glium::DepthTest;
 use glium::DisplayBuild;
@@ -49,22 +55,18 @@ use glium::texture::RawImage2d;
 use glium::texture::SrgbTexture2d;
 use glium::texture::Texture2d;
 use glium::vertex::VertexBuffer;
-
 use std::path::Path;
-
-use teapot::Normal;
-use teapot::Vertex;
-
 use webvr::VRDisplayEvent;
 use webvr::VRLayer;
 use webvr::VRServiceManager;
 
-#[derive(Copy, Clone)]
-pub struct Texcoord {
-    pub texcoord: (f32, f32)
-}
-
-implement_vertex!(Texcoord, texcoord);
+use geometry::Geometry;
+use geometry::Normal;
+use geometry::Texcoord;
+use geometry::Vertex;
+use material::Material;
+use mesh::Mesh;
+use object::Object;
 
 #[derive(PartialEq)]
 enum Action {
@@ -77,83 +79,6 @@ fn load_texture(window: &GlutinFacade, name: &str) -> SrgbTexture2d {
   let image_dimensions = image.dimensions();
   let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
   SrgbTexture2d::new(window, image).unwrap()
-}
-
-struct Geometry {
-  pub indices: Option<IndexBuffer<u16>>,
-  pub normals: VertexBuffer<Normal>,
-  pub vertices: VertexBuffer<Vertex>,
-  pub texcoords: VertexBuffer<Texcoord>,
-}
-
-impl Geometry {
-  fn new_quad(window: &GlutinFacade, size: [f32; 2]) -> Geometry {
-    let width_half = size[0] * 0.5;
-    let height_half = size[1] * 0.5;
-
-    Geometry {
-      indices: Some(IndexBuffer::new(
-          window,
-          PrimitiveType::TriangleStrip,
-          &[1, 2, 0, 3u16]).unwrap()),
-      normals: VertexBuffer::new(window, &[
-          Normal { normal: (0.0, 0.0, 1.0) },
-          Normal { normal: (0.0, 0.0, 1.0) },
-          Normal { normal: (0.0, 0.0, 1.0) },
-          Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
-      vertices: VertexBuffer::new(window, &[
-          Vertex { position: (-width_half, -height_half, 0.0) },
-          Vertex { position: (-width_half,  height_half, 0.0) },
-          Vertex { position: ( width_half,  height_half, 0.0) },
-          Vertex { position: ( width_half, -height_half, 0.0) }]).unwrap(),
-      texcoords: VertexBuffer::new(window, &[
-          Texcoord { texcoord: (0.0, 0.0) },
-          Texcoord { texcoord: (0.0, 1.0) },
-          Texcoord { texcoord: (1.0, 1.0) },
-          Texcoord { texcoord: (1.0, 0.0) }]).unwrap(),
-    }
-  }
-
-  fn borrow_indices<'a>(&'a self) -> Result<&'a IndexBuffer<u16>, &str> {
-    match self.indices {
-      Some(ref x) => Ok(x),
-      None => Err("Nope"),
-    }
-  }
-}
-
-struct Material<'a> {
-  albedo_map: &'a SrgbTexture2d,
-  metalness: f32,
-  reflectivity: f32,
-}
-
-struct Mesh<'a> {
-  pub geometry: Geometry,
-  pub material: Material<'a>,
-}
-
-struct Object<'a> {
-  pub mesh: Option<Mesh<'a>>,
-  pub transform: Matrix4<f32>,
-}
-
-impl<'a> Object<'a> {
-  fn new_plane(window: &GlutinFacade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
-      rot: [f32;3], scale: [f32;3]) -> Object<'a> {
-    let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
-    let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
-    let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
-    let matrix = translation * scale * rotation;
-
-    Object {
-      mesh: Some(Mesh {
-        geometry: Geometry::new_quad(window, size),
-        material: Material { albedo_map: tex, metalness: 0.0, reflectivity: 0.0 },
-      }),
-      transform: matrix,
-    }
-  }
 }
 
 fn vec_to_matrix(m: &[f32; 16]) -> Matrix4<f32> {
@@ -487,15 +412,19 @@ fn main() {
     event_counter += 1;
     if event_counter % 100 == 0 {
       for event in vr.poll_events() {
-        use VRDisplayEvent::*;
         match event {
-          Connect(data) => {
-            println!("VR display {}: Connected (name: {})", data.display_id,
-                data.display_name);
+          VRDisplayEvent::Connect(data) => {
+            println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
           },
-          Disconnect(display_id) => println!("VR display {}: Disconnected.", display_id),
-          Activate(data, _) => println!("VR display {}: Activated.", data.display_id),
-          Deactivate(data, _) => println!("VR display {}: Deactivated.", data.display_id),
+          VRDisplayEvent::Disconnect(display_id) => {
+            println!("VR display {}: Disconnected.", display_id);
+          },
+          VRDisplayEvent::Activate(data, _) => {
+            println!("VR display {}: Activated.", data.display_id);
+          },
+          VRDisplayEvent::Deactivate(data, _) => {
+            println!("VR display {}: Deactivated.", data.display_id);
+          },
           _ => println!("VR event: {:?}", event),
         }
       }
