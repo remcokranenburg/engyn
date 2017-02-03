@@ -5,7 +5,7 @@ reach a target frame rate. To this end, every graphical feature will be highly c
 detailed performance breakdowns will be generated that can be used to decide how to tune the
 algorithms.
 
-Currently, nothing works.
+Currently, you can walk around in a simple static environment without any lighting.
 
 ## How do I run this?
 
