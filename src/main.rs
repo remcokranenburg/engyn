@@ -24,14 +24,15 @@ extern crate rust_webvr as webvr;
 
 mod geometry;
 mod material;
+mod math;
 mod mesh;
 mod object;
 mod teapot;
 
+use cgmath::Deg;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Transform;
-use cgmath::Vector3;
 use glium::Depth;
 use glium::DepthTest;
 use glium::DisplayBuild;
@@ -47,8 +48,8 @@ use glium::framebuffer::ToColorAttachment;
 use glium::framebuffer::ToDepthAttachment;
 use glium::glutin::Event;
 use glium::glutin::VirtualKeyCode;
+use glium::glutin::WindowBuilder;
 use glium::index::IndexBuffer;
-use glium::index::NoIndices;
 use glium::index::PrimitiveType;
 use glium::texture::DepthFormat;
 use glium::texture::RawImage2d;
@@ -68,40 +69,11 @@ use material::Material;
 use mesh::Mesh;
 use object::Object;
 
-#[derive(PartialEq)]
-enum Action {
-  Exit,
-  Nothing,
-}
-
 fn load_texture(window: &GlutinFacade, name: &str) -> SrgbTexture2d {
   let image = image::open(&Path::new(&name)).unwrap().to_rgba();
   let image_dimensions = image.dimensions();
   let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
   SrgbTexture2d::new(window, image).unwrap()
-}
-
-fn vec_to_matrix(m: &[f32; 16]) -> Matrix4<f32> {
-  Matrix4::new(
-      m[0], m[1], m[2], m[3],
-      m[4], m[5], m[6], m[7],
-      m[8], m[9], m[10], m[11],
-      m[12], m[13], m[14], m[15])
-}
-
-fn matrix_to_uniform<'a>(m: &'a Matrix4<f32>) -> &'a [[f32; 4]; 4] {
-  m.as_ref()
-}
-
-fn vec_to_translation(t: &[f32; 3]) -> Matrix4<f32> {
-    Matrix4::from_translation(Vector3::new(t[0], t[1], t[2]))
-}
-
-fn handle_key(key_code: VirtualKeyCode) -> Action {
-  match key_code {
-    VirtualKeyCode::Escape => Action::Exit,
-    _ => Action::Nothing,
-  }
 }
 
 fn main() {
@@ -111,42 +83,50 @@ fn main() {
 
   let displays = vr.get_displays();
 
-  let display = match displays.get(0) {
+  let (mut render_dimensions, window) = match displays.get(0) {
     Some(d) => {
-      println!("VR display 0: {}", d.borrow().data().display_name);
-      d
+      let data = d.borrow().data();
+      println!("VR display 0: {}", data.display_name);
+
+      let render_width = data.left_eye_parameters.render_width;
+      let render_height = data.left_eye_parameters.render_height;
+      let window_width = render_width;
+      let window_height = (render_height as f32 * 0.5) as u32;
+
+      let window = WindowBuilder::new()
+        .with_title(format!("Engyn"))
+        .with_depth_buffer(24)
+        .with_vsync()
+        .with_dimensions(window_width, window_height)
+        .build_glium()
+        .unwrap();
+
+      ((render_width, render_height), window)
     },
     None => {
-      println!("Could not select VR device! Can't continue.");
-      return
-    }
+      println!("No VR device detected. Continuing in normal mode.");
+      let window = WindowBuilder::new()
+        .with_title(format!("Engyn"))
+        .with_depth_buffer(24)
+        .with_vsync()
+        .with_dimensions(1280, 720)
+        .build_glium()
+        .unwrap();
+
+      (window.get_framebuffer_dimensions(), window)
+    },
   };
-
-  let display_data = display.borrow().data();
-
-  let render_width = display_data.left_eye_parameters.render_width;
-  let render_height = display_data.left_eye_parameters.render_height;
-  let window_width = render_width;
-  let window_height = (render_height as f32 * 0.5) as u32;
-
-  let window = glium::glutin::WindowBuilder::new()
-    .with_title(format!("Engyn"))
-    .with_depth_buffer(24)
-    .with_vsync()
-    .with_dimensions(window_width, window_height)
-    .build_glium()
-    .unwrap();
-
 
   println!("Loading textures...");
   let empty_tex = load_texture(&window, "data/empty.bmp");
   let marble_tex = load_texture(&window, "data/marble.jpg");
   println!("Textures loaded!");
 
-  let target_texture = Texture2d::empty(&window, render_width * 2, render_height).unwrap();
+  let target_texture = Texture2d::empty(&window, render_dimensions.0 * 2,
+      render_dimensions.1).unwrap();
   let color_attachment = target_texture.to_color_attachment();
-  let depth_buffer = DepthRenderBuffer::new(&window, DepthFormat::I24, render_width * 2,
-      render_height).unwrap();
+  let depth_buffer = DepthRenderBuffer::new(&window, DepthFormat::I24, render_dimensions.0 * 2,
+      render_dimensions.1).unwrap();
   let depth_attachment = depth_buffer.to_depth_attachment();
   let mut framebuffer = SimpleFrameBuffer::with_depth_buffer(&window, color_attachment,
       depth_attachment).unwrap();
@@ -154,15 +134,15 @@ fn main() {
   let left_viewport = Rect {
       left: 0,
       bottom: 0,
-      width: render_width,
-      height: render_height,
+      width: render_dimensions.0,
+      height: render_dimensions.1,
   };
 
   let right_viewport = Rect {
-      left: render_width,
+      left: render_dimensions.0,
       bottom: 0,
-      width: render_width,
-      height: render_height,
+      width: render_dimensions.0,
+      height: render_dimensions.1,
   };
 
   let render_program = Program::from_source(
@@ -313,143 +293,154 @@ fn main() {
 
   let mut event_counter = 0u64;
 
+  let mut mono_view = Matrix4::new(
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, -0.75, -2.0, 1.0);
+
   loop {
-    let mut action = Action::Nothing;
+    let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
+    let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
 
-    display.borrow_mut().sync_poses();
 
-    let display_data = display.borrow().data();
+    match displays.get(0) {
+      Some(d) => {
+        d.borrow_mut().sync_poses();
 
-    let standing_transform = if let Some(ref stage) = display_data.stage_parameters {
-        vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
-    } else {
-        // Stage parameters not avaialbe yet or unsupported
-        // Assume 0.75m transform height
-        vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
-    };
+        let data = d.borrow().data();
 
-    framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+        let standing_transform = if let Some(ref stage) = data.stage_parameters {
+            math::vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
+        } else {
+            // Stage parameters not avaialbe yet or unsupported
+            // Assume 0.75m transform height
+            math::vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
+        };
 
-    let data = display.borrow().synced_frame_data(0.1, 1000.0);
+        framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
-    let left_view_matrix = vec_to_matrix(&data.left_view_matrix);
-    let right_view_matrix = vec_to_matrix(&data.right_view_matrix);
+        let data = d.borrow().synced_frame_data(0.1, 1000.0);
 
-    let eyes = [
-      (&left_viewport, &data.left_projection_matrix, &left_view_matrix),
-      (&right_viewport, &data.right_projection_matrix, &right_view_matrix),
-    ];
+        let left_view_matrix = math::vec_to_matrix(&data.left_view_matrix);
+        let right_view_matrix = math::vec_to_matrix(&data.right_view_matrix);
 
-    for eye in &eyes {
-      render_params.viewport = Some(*eye.0);
-      let projection = vec_to_matrix(eye.1);
-      let eye_view = eye.2 * standing_transform;
+        let eyes = [
+          (&left_viewport, &data.left_projection_matrix, &left_view_matrix),
+          (&right_viewport, &data.right_projection_matrix, &right_view_matrix),
+        ];
 
-      for object in &*world {
-        match object.mesh {
-          Some(ref m) => {
-            let uniforms = uniform! {
-              projection: *matrix_to_uniform(&projection),
-              view: *matrix_to_uniform(&eye_view),
-              model: *matrix_to_uniform(&object.transform),
-              albedo_map: m.material.albedo_map,
-              metalness: m.material.metalness,
-              reflectivity: m.material.reflectivity,
-            };
+        for eye in &eyes {
+          let projection = math::matrix_to_uniform(math::vec_to_matrix(eye.1));
+          let view = math::matrix_to_uniform(eye.2 * standing_transform);
+          let viewport = Some(*eye.0);
 
-            match m.geometry.indices {
-              Some(ref indices) => framebuffer.draw(
-                  (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
-                  indices,
-                  &render_program,
-                  &uniforms,
-                  &render_params).unwrap(),
-              None => framebuffer.draw(
-                  (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
-                  NoIndices(PrimitiveType::TrianglesList),
-                  &render_program,
-                  &uniforms,
-                  &render_params).unwrap(),
-            }
-          },
-          None => (),
+          render_params.viewport = viewport;
+
+          for object in &mut world {
+            object.draw(&mut framebuffer, projection, view, &render_program, &render_params);
+          }
         }
+
+        let layer = VRLayer {
+          texture_id: target_texture.get_id(),
+          ..Default::default()
+        };
+
+        d.borrow_mut().submit_frame(&layer);
+
+        // now draw the framebuffer as a texture to the window
+
+        let mut target = window.draw();
+        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
+        let uniforms = uniform! {
+            matrix: math::matrix_to_uniform(Matrix4::<f32>::identity()),
+            sampler: &target_texture
+        };
+
+        target.draw(
+            (&fbo_to_screen.vertices, &fbo_to_screen.texcoords),
+            fbo_to_screen.borrow_indices().unwrap(),
+            &compositor_program,
+            &uniforms,
+            &Default::default()).unwrap();
+
+        target.finish().unwrap();
+
+        // once every 100 frames, check for VR events
+        event_counter += 1;
+        if event_counter % 100 == 0 {
+          for event in vr.poll_events() {
+            match event {
+              VRDisplayEvent::Connect(data) => {
+                println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
+              },
+              VRDisplayEvent::Disconnect(display_id) => {
+                println!("VR display {}: Disconnected.", display_id);
+              },
+              VRDisplayEvent::Activate(data, _) => {
+                println!("VR display {}: Activated.", data.display_id);
+              },
+              VRDisplayEvent::Deactivate(data, _) => {
+                println!("VR display {}: Deactivated.", data.display_id);
+              },
+              _ => println!("VR event: {:?}", event),
+            }
+          }
+        }
+      },
+      None => {
+        // draw the scene normally
+        let mut target = window.draw();
+        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
+        let projection = math::matrix_to_uniform(mono_projection);
+        let view = math::matrix_to_uniform(mono_view);
+        let viewport = None;
+
+        render_params.viewport = viewport;
+
+        for object in &mut world {
+          object.draw(&mut target, projection, view, &render_program, &render_params);
+        }
+
+        target.finish().unwrap();
       }
     }
-
-    let layer = VRLayer {
-      texture_id: target_texture.get_id(),
-      ..Default::default()
-    };
-
-    display.borrow_mut().submit_frame(&layer);
-
-    // now render to desktop display
-
-    let mut target = window.draw();
-    target.clear_color_and_depth((1.0, 0.0, 0.0, 1.0), 1.0);
-
-    let uniforms = uniform! {
-        matrix: *matrix_to_uniform(&Matrix4::<f32>::identity()),
-        sampler: &target_texture
-    };
-
-    target.draw(
-        (
-            &fbo_to_screen.vertices,
-            &fbo_to_screen.texcoords
-        ),
-        fbo_to_screen.borrow_indices().unwrap(),
-        &compositor_program,
-        &uniforms,
-        &Default::default()).unwrap();
-
-    target.finish().unwrap();
 
     assert_no_gl_error!(window);
 
-    // once every 100 frames, check for VR events
-    event_counter += 1;
-    if event_counter % 100 == 0 {
-      for event in vr.poll_events() {
-        match event {
-          VRDisplayEvent::Connect(data) => {
-            println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
-          },
-          VRDisplayEvent::Disconnect(display_id) => {
-            println!("VR display {}: Disconnected.", display_id);
-          },
-          VRDisplayEvent::Activate(data, _) => {
-            println!("VR display {}: Activated.", data.display_id);
-          },
-          VRDisplayEvent::Deactivate(data, _) => {
-            println!("VR display {}: Deactivated.", data.display_id);
-          },
-          _ => println!("VR event: {:?}", event),
-        }
-      }
-    }
-
     for event in window.poll_events() {
-      action = match event {
-        Event::Closed => Action::Exit,
-        Event::KeyboardInput(_, _, key_code) => handle_key(key_code.unwrap()),
+      match event {
+        Event::Closed | Event::KeyboardInput(_, _, Some(VirtualKeyCode::Escape)) => {
+          println!("Exiting...");
+          return;
+        },
+        Event::KeyboardInput(_, _, Some(key_code)) => {
+          match key_code {
+            VirtualKeyCode::Up => {
+              mono_view[3][2] = mono_view[3][2] + 0.1;
+            },
+            VirtualKeyCode::Down => {
+              mono_view[3][2] = mono_view[3][2] - 0.1;
+            },
+            VirtualKeyCode::Left => {
+              mono_view[3][0] = mono_view[3][0] + 0.1;
+            },
+            VirtualKeyCode::Right => {
+              mono_view[3][0] = mono_view[3][0] - 0.1;
+            },
+            _ => {},
+          }
+        },
         Event::Resized(width, height) => {
+          render_dimensions = (width, height);
           println!("resized to {}x{}", width, height);
-          Action::Nothing
         }
-        _ => Action::Nothing
+        _ => {}
       };
-
-      if action != Action::Nothing { break }
     }
 
-    match action {
-      Action::Exit => {
-        println!("Exiting...");
-        break;
-      },
-      Action::Nothing => ()
-    };
   }
 }

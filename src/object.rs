@@ -20,11 +20,17 @@ use cgmath::Euler;
 use cgmath::Rad;
 use cgmath::Matrix4;
 use cgmath::Vector3;
+use glium::Program;
+use glium::Surface;
+use glium::DrawParameters;
 use glium::backend::glutin_backend::GlutinFacade;
+use glium::index::NoIndices;
+use glium::index::PrimitiveType;
 use glium::texture::SrgbTexture2d;
 
 use geometry::Geometry;
 use material::Material;
+use math;
 use mesh::Mesh;
 
 pub struct Object<'a> {
@@ -46,6 +52,39 @@ impl<'a> Object<'a> {
         material: Material { albedo_map: tex, metalness: 0.0, reflectivity: 0.0 },
       }),
       transform: matrix,
+    }
+  }
+
+  pub fn draw<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
+      program: &Program, render_params: &DrawParameters)
+      where S: Surface {
+    match self.mesh {
+      Some(ref m) => {
+        let uniforms = uniform! {
+          projection: projection,
+          view: view,
+          model: math::matrix_to_uniform(self.transform),
+          albedo_map: m.material.albedo_map,
+          metalness: m.material.metalness,
+          reflectivity: m.material.reflectivity,
+        };
+
+        match m.geometry.indices {
+          Some(ref indices) => target.draw(
+            (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
+            indices,
+            program,
+            &uniforms,
+            render_params).unwrap(),
+          None => target.draw(
+            (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
+            NoIndices(PrimitiveType::TrianglesList),
+            program,
+            &uniforms,
+            render_params).unwrap(),
+        }
+      },
+      None => (),
     }
   }
 }
