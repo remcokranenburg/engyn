@@ -50,26 +50,26 @@ pub struct Geometry {
 }
 
 impl Geometry {
-  pub fn new_quad(window: &GlutinFacade, size: [f32; 2]) -> Geometry {
+  pub fn new_quad(context: &GlutinFacade, size: [f32; 2]) -> Geometry {
     let width_half = size[0] * 0.5;
     let height_half = size[1] * 0.5;
 
     Geometry {
       indices: Some(IndexBuffer::new(
-          window,
+          context,
           PrimitiveType::TriangleStrip,
           &[1, 2, 0, 3u16]).unwrap()),
-      normals: VertexBuffer::new(window, &[
+      normals: VertexBuffer::new(context, &[
           Normal { normal: (0.0, 0.0, 1.0) },
           Normal { normal: (0.0, 0.0, 1.0) },
           Normal { normal: (0.0, 0.0, 1.0) },
           Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
-      vertices: VertexBuffer::new(window, &[
+      vertices: VertexBuffer::new(context, &[
           Vertex { position: (-width_half, -height_half, 0.0) },
           Vertex { position: (-width_half,  height_half, 0.0) },
           Vertex { position: ( width_half,  height_half, 0.0) },
           Vertex { position: ( width_half, -height_half, 0.0) }]).unwrap(),
-      texcoords: VertexBuffer::new(window, &[
+      texcoords: VertexBuffer::new(context, &[
           Texcoord { texcoord: (0.0, 0.0) },
           Texcoord { texcoord: (0.0, 1.0) },
           Texcoord { texcoord: (1.0, 1.0) },

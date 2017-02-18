@@ -22,6 +22,7 @@ extern crate cgmath;
 extern crate rand;
 extern crate rust_webvr as webvr;
 
+mod camera;
 mod geometry;
 mod material;
 mod math;
@@ -31,8 +32,10 @@ mod teapot;
 
 use cgmath::Deg;
 use cgmath::Matrix4;
+use cgmath::Rad;
 use cgmath::SquareMatrix;
 use cgmath::Transform;
+use cgmath::Vector3;
 use glium::Depth;
 use glium::DepthTest;
 use glium::DisplayBuild;
@@ -47,6 +50,9 @@ use glium::framebuffer::SimpleFrameBuffer;
 use glium::framebuffer::ToColorAttachment;
 use glium::framebuffer::ToDepthAttachment;
 use glium::glutin::Event;
+use glium::glutin::MouseCursor;
+use glium::glutin::CursorState;
+use glium::glutin::ElementState;
 use glium::glutin::VirtualKeyCode;
 use glium::glutin::WindowBuilder;
 use glium::index::IndexBuffer;
@@ -57,10 +63,12 @@ use glium::texture::SrgbTexture2d;
 use glium::texture::Texture2d;
 use glium::vertex::VertexBuffer;
 use std::path::Path;
+use std::f32;
 use webvr::VRDisplayEvent;
 use webvr::VRLayer;
 use webvr::VRServiceManager;
 
+use camera::FpsCamera;
 use geometry::Geometry;
 use geometry::Normal;
 use geometry::Texcoord;
@@ -69,11 +77,11 @@ use material::Material;
 use mesh::Mesh;
 use object::Object;
 
-fn load_texture(window: &GlutinFacade, name: &str) -> SrgbTexture2d {
+fn load_texture(context: &GlutinFacade, name: &str) -> SrgbTexture2d {
   let image = image::open(&Path::new(&name)).unwrap().to_rgba();
   let image_dimensions = image.dimensions();
   let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
-  SrgbTexture2d::new(window, image).unwrap()
+  SrgbTexture2d::new(context, image).unwrap()
 }
 
 fn main() {
@@ -83,7 +91,7 @@ fn main() {
 
   let displays = vr.get_displays();
 
-  let (mut render_dimensions, window) = match displays.get(0) {
+  let (mut render_dimensions, context) = match displays.get(0) {
     Some(d) => {
       let data = d.borrow().data();
       println!("VR display 0: {}", data.display_name);
@@ -93,7 +101,7 @@ fn main() {
       let window_width = render_width;
       let window_height = (render_height as f32 * 0.5) as u32;
 
-      let window = WindowBuilder::new()
+      let context = WindowBuilder::new()
         .with_title(format!("Engyn"))
         .with_depth_buffer(24)
         .with_vsync()
@@ -101,11 +109,11 @@ fn main() {
         .build_glium()
         .unwrap();
 
-      ((render_width, render_height), window)
+      ((render_width, render_height), context)
     },
     None => {
       println!("No VR device detected. Continuing in normal mode.");
-      let window = WindowBuilder::new()
+      let context = WindowBuilder::new()
         .with_title(format!("Engyn"))
         .with_depth_buffer(24)
         .with_vsync()
@@ -113,22 +121,27 @@ fn main() {
         .build_glium()
         .unwrap();
 
-      (window.get_framebuffer_dimensions(), window)
+      (context.get_framebuffer_dimensions(), context)
     },
   };
 
+  let window = context.get_window().unwrap();
+  let origin_x = render_dimensions.0 as i32 / 2;
+  let origin_y = render_dimensions.1 as i32 / 2;
+  window.set_cursor_position(origin_x, origin_y).unwrap();
+
   println!("Loading textures...");
-  let empty_tex = load_texture(&window, "data/empty.bmp");
-  let marble_tex = load_texture(&window, "data/marble.jpg");
+  let empty_tex = load_texture(&context, "data/empty.bmp");
+  let marble_tex = load_texture(&context, "data/marble.jpg");
   println!("Textures loaded!");
 
-  let target_texture = Texture2d::empty(&window, render_dimensions.0 * 2,
+  let target_texture = Texture2d::empty(&context, render_dimensions.0 * 2,
       render_dimensions.1).unwrap();
   let color_attachment = target_texture.to_color_attachment();
-  let depth_buffer = DepthRenderBuffer::new(&window, DepthFormat::I24, render_dimensions.0 * 2,
+  let depth_buffer = DepthRenderBuffer::new(&context, DepthFormat::I24, render_dimensions.0 * 2,
       render_dimensions.1).unwrap();
   let depth_attachment = depth_buffer.to_depth_attachment();
-  let mut framebuffer = SimpleFrameBuffer::with_depth_buffer(&window, color_attachment,
+  let mut framebuffer = SimpleFrameBuffer::with_depth_buffer(&context, color_attachment,
       depth_attachment).unwrap();
 
   let left_viewport = Rect {
@@ -146,7 +159,7 @@ fn main() {
   };
 
   let render_program = Program::from_source(
-      &window,
+      &context,
       &r#"
         #version 140
 
@@ -180,7 +193,7 @@ fn main() {
       None).unwrap();
 
   let compositor_program = Program::from_source(
-      &window,
+      &context,
       &r#"
         #version 140
         uniform mat4 matrix;
@@ -212,15 +225,15 @@ fn main() {
     mesh: Some(Mesh {
       geometry: Geometry {
         indices: None,
-        normals: VertexBuffer::new(&window, &[
+        normals: VertexBuffer::new(&context, &[
             Normal { normal: (0.0, 0.0, 1.0) },
             Normal { normal: (0.0, 0.0, 1.0) },
             Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
-        vertices: VertexBuffer::new(&window, &[
+        vertices: VertexBuffer::new(&context, &[
             Vertex { position: (-0.50, -0.50, 0.00) },
             Vertex { position: ( 0.50, -0.50, 0.00) },
             Vertex { position: ( 0.00,  0.50, 0.00) } ]).unwrap(),
-        texcoords: VertexBuffer::new(&window, &[
+        texcoords: VertexBuffer::new(&context, &[
             Texcoord { texcoord: (0.0, 0.0) },
             Texcoord { texcoord: (1.0, 0.0) },
             Texcoord { texcoord: (0.5, 1.0) },
@@ -235,7 +248,7 @@ fn main() {
 
   let my_floor = Object {
     mesh: Some(Mesh {
-      geometry: Geometry::new_quad(&window, [2.0, 2.0]),
+      geometry: Geometry::new_quad(&context, [2.0, 2.0]),
       material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
     transform: Matrix4::new(0.1, 0.0, 0.0, 0.0,
@@ -262,12 +275,12 @@ fn main() {
     mesh: Some(Mesh {
       geometry: Geometry {
         indices: Some(IndexBuffer::new(
-            &window,
+            &context,
             PrimitiveType::TrianglesList,
             &teapot::INDICES).unwrap()),
-        normals: VertexBuffer::new(&window, &teapot::NORMALS).unwrap(),
-        vertices: VertexBuffer::new(&window, &teapot::VERTICES).unwrap(),
-        texcoords: VertexBuffer::new(&window, &my_teapot_texcoords).unwrap(),
+        normals: VertexBuffer::new(&context, &teapot::NORMALS).unwrap(),
+        vertices: VertexBuffer::new(&context, &teapot::VERTICES).unwrap(),
+        texcoords: VertexBuffer::new(&context, &my_teapot_texcoords).unwrap(),
       },
       material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
@@ -281,10 +294,10 @@ fn main() {
   world.push(my_teapot);
 
   // empty texture to force glutin clean
-  world.push(Object::new_plane(&window, &empty_tex, [0.0001,0.0001], [-0.1, 0.1, 0.0],
+  world.push(Object::new_plane(&context, &empty_tex, [0.0001,0.0001], [-0.1, 0.1, 0.0],
       [0.0, 0.0, 0.0], [-1.0,1.0,1.0]));
 
-  let fbo_to_screen = Geometry::new_quad(&window, [2.0, 2.0]);
+  let fbo_to_screen = Geometry::new_quad(&context, [2.0, 2.0]);
 
   let mut render_params = DrawParameters {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
@@ -293,11 +306,10 @@ fn main() {
 
   let mut event_counter = 0u64;
 
-  let mut mono_view = Matrix4::new(
-      1.0, 0.0, 0.0, 0.0,
-      0.0, 1.0, 0.0, 0.0,
-      0.0, 0.0, 1.0, 0.0,
-      0.0, -0.75, -2.0, 1.0);
+  let mut fps_camera = FpsCamera::new(Vector3::new(0.0, 1.8, 3.0));
+
+  window.set_cursor(MouseCursor::NoneCursor);
+  window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
 
   loop {
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
@@ -351,7 +363,7 @@ fn main() {
 
         // now draw the framebuffer as a texture to the window
 
-        let mut target = window.draw();
+        let mut target = context.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
         let uniforms = uniform! {
@@ -392,11 +404,12 @@ fn main() {
       },
       None => {
         // draw the scene normally
-        let mut target = window.draw();
+        let mut target = context.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
         let projection = math::matrix_to_uniform(mono_projection);
-        let view = math::matrix_to_uniform(mono_view);
+        // TODO: get actual timedelta
+        let view = math::matrix_to_uniform(fps_camera.get_view(0.016));
         let viewport = None;
 
         render_params.viewport = viewport;
@@ -409,31 +422,52 @@ fn main() {
       }
     }
 
-    assert_no_gl_error!(window);
+    assert_no_gl_error!(context);
 
-    for event in window.poll_events() {
+    for event in context.poll_events() {
       match event {
         Event::Closed | Event::KeyboardInput(_, _, Some(VirtualKeyCode::Escape)) => {
           println!("Exiting...");
           return;
         },
-        Event::KeyboardInput(_, _, Some(key_code)) => {
+        Event::KeyboardInput(element_state, _, Some(key_code)) => {
           match key_code {
-            VirtualKeyCode::Up => {
-              mono_view[3][2] = mono_view[3][2] + 0.1;
+            VirtualKeyCode::Up | VirtualKeyCode::W => {
+              match element_state {
+                ElementState::Pressed => fps_camera.forward = true,
+                ElementState::Released => fps_camera.forward = false,
+              };
             },
-            VirtualKeyCode::Down => {
-              mono_view[3][2] = mono_view[3][2] - 0.1;
+            VirtualKeyCode::Down | VirtualKeyCode::S => {
+              match element_state {
+                ElementState::Pressed => fps_camera.backward = true,
+                ElementState::Released => fps_camera.backward = false,
+              };
             },
-            VirtualKeyCode::Left => {
-              mono_view[3][0] = mono_view[3][0] + 0.1;
+            VirtualKeyCode::Left | VirtualKeyCode::A => {
+              match element_state {
+                ElementState::Pressed => fps_camera.left = true,
+                ElementState::Released => fps_camera.left = false,
+              };
             },
-            VirtualKeyCode::Right => {
-              mono_view[3][0] = mono_view[3][0] - 0.1;
+            VirtualKeyCode::Right | VirtualKeyCode::D => {
+              match element_state {
+                ElementState::Pressed => fps_camera.right = true,
+                ElementState::Released => fps_camera.right = false,
+              };
             },
             _ => {},
           }
         },
+        Event::MouseMoved(x, y) => {
+          let rel_x = x - origin_x;
+          let rel_y = y - origin_y;
+          fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
+            .max(-f32::consts::PI / 2.0)
+            .min(f32::consts::PI / 2.0));
+          fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
+          window.set_cursor_position(origin_x, origin_y).unwrap();
+        }
         Event::Resized(width, height) => {
           render_dimensions = (width, height);
           println!("resized to {}x{}", width, height);
@@ -441,6 +475,5 @@ fn main() {
         _ => {}
       };
     }
-
   }
 }
