@@ -92,7 +92,7 @@ fn main() {
 
   let displays = vr.get_displays();
 
-  let (mut render_dimensions, context) = match displays.get(0) {
+  let (vr_mode, context, mut render_dimensions) = match displays.get(0) {
     Some(d) => {
       let data = d.borrow().data();
       println!("VR display 0: {}", data.display_name);
@@ -110,7 +110,7 @@ fn main() {
         .build_glium()
         .unwrap();
 
-      ((render_width, render_height), context)
+      (true, context, (render_width, render_height))
     },
     None => {
       println!("No VR device detected. Continuing in normal mode.");
@@ -122,14 +122,20 @@ fn main() {
         .build_glium()
         .unwrap();
 
-      (context.get_framebuffer_dimensions(), context)
+      let (width, height) = {
+        let window = context.get_window().unwrap();
+        let (width, height) = window.get_inner_size_pixels().unwrap();
+        let origin_x = width as i32 / 2;
+        let origin_y = height as i32 / 2;
+        window.set_cursor_position(origin_x, origin_y).unwrap();
+        window.set_cursor(MouseCursor::NoneCursor);
+        window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
+        (width, height)
+      };
+
+      (false, context, (width, height))
     },
   };
-
-  let window = context.get_window().unwrap();
-  let origin_x = render_dimensions.0 as i32 / 2;
-  let origin_y = render_dimensions.1 as i32 / 2;
-  window.set_cursor_position(origin_x, origin_y).unwrap();
 
   println!("Loading textures...");
   let empty_tex = load_texture(&context, "data/empty.bmp");
@@ -307,8 +313,7 @@ fn main() {
 
   let mut fps_camera = FpsCamera::new(Vector3::new(0.0, 1.8, 3.0));
 
-  window.set_cursor(MouseCursor::NoneCursor);
-  window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
+  let window = context.get_window().unwrap();
 
   loop {
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
@@ -459,14 +464,19 @@ fn main() {
           }
         },
         Event::MouseMoved(x, y) => {
-          let rel_x = x - origin_x;
-          let rel_y = y - origin_y;
-          fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
-            .max(-f32::consts::PI / 2.0)
-            .min(f32::consts::PI / 2.0));
-          fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
-          window.set_cursor_position(origin_x, origin_y).unwrap();
-        }
+          if !vr_mode {
+            let (width, height) = window.get_inner_size_pixels().unwrap();
+            let origin_x = width as i32 / 2;
+            let origin_y = height as i32 / 2;
+            let rel_x = x - origin_x;
+            let rel_y = y - origin_y;
+            fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
+              .max(-f32::consts::PI / 2.0)
+              .min(f32::consts::PI / 2.0));
+            fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
+            window.set_cursor_position(origin_x, origin_y).unwrap();
+          }
+        },
         Event::Resized(width, height) => {
           render_dimensions = (width, height);
           println!("resized to {}x{}", width, height);
