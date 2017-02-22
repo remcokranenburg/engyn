@@ -135,6 +135,28 @@ impl Geometry {
     }
   }
 
+  pub fn new_triangle(context: &GlutinFacade, size: [f32; 2]) -> Geometry {
+    let width_half = size[0] * 0.5;
+    let height_half = size[1] * 0.5;
+
+    Geometry {
+      indices: None,
+      normals: VertexBuffer::new(context, &[
+          Normal { normal: (0.0, 0.0, 1.0) },
+          Normal { normal: (0.0, 0.0, 1.0) },
+          Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
+      vertices: VertexBuffer::new(context, &[
+          Vertex { position: (-width_half, -height_half, 0.0) },
+          Vertex { position: ( width_half, -height_half, 0.0) },
+          Vertex { position: (        0.0,  height_half, 0.0) }]).unwrap(),
+      texcoords: VertexBuffer::new(context, &[
+          Texcoord { texcoord: (0.0, 0.0) },
+          Texcoord { texcoord: (1.0, 0.0) },
+          Texcoord { texcoord: (0.5, 1.0) },
+        ]).unwrap(),
+    }
+  }
+
   pub fn borrow_indices<'a>(&'a self) -> Result<&'a IndexBuffer<u32>, &str> {
     match self.indices {
       Some(ref x) => Ok(x),
