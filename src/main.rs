@@ -134,6 +134,7 @@ fn main() {
   println!("Loading textures...");
   let empty_tex = load_texture(&context, "data/empty.bmp");
   let marble_tex = load_texture(&context, "data/marble.jpg");
+  let terrain_tex = load_texture(&context, "data/terrain.png");
   println!("Textures loaded!");
 
   let target_texture = Texture2d::empty(&context, render_dimensions.0 * 2,
@@ -249,13 +250,10 @@ fn main() {
 
   let my_floor = Object {
     mesh: Some(Mesh {
-      geometry: Geometry::new_quad(&context, [2.0, 2.0]),
-      material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
+      geometry: Geometry::from_obj(&context, "data/terrain.obj"),
+      material: Material { albedo_map: &terrain_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
-    transform: Matrix4::new(0.1, 0.0, 0.0, 0.0,
-                            0.0, 0.1, 0.0, 0.0,
-                            0.0, 0.0, 0.1, 0.0,
-                            0.0, 0.0, 1.0, 1.0),
+    transform: Matrix4::<f32>::identity(),
   };
 
   world.push(my_floor);
