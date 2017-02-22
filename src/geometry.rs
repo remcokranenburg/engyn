@@ -20,6 +20,8 @@ use glium::backend::glutin_backend::GlutinFacade;
 use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
 use glium::vertex::VertexBuffer;
+use std::path::Path;
+use tobj;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -43,13 +45,69 @@ pub struct Normal {
 implement_vertex!(Normal, normal);
 
 pub struct Geometry {
-  pub indices: Option<IndexBuffer<u16>>,
+  pub indices: Option<IndexBuffer<u32>>,
   pub normals: VertexBuffer<Normal>,
   pub vertices: VertexBuffer<Vertex>,
   pub texcoords: VertexBuffer<Texcoord>,
 }
 
 impl Geometry {
+  pub fn from_obj(context: &GlutinFacade, filename: &str) -> Geometry {
+    let (models, materials) = tobj::load_obj(&Path::new(filename)).unwrap();
+
+    assert!(models.len() > 0);
+
+    let mesh = &models[0].mesh;
+
+    let indices = if mesh.indices.len() > 0 {
+      Some(IndexBuffer::new(context, PrimitiveType::TrianglesList, &mesh.indices).unwrap())
+    } else {
+      None
+    };
+
+    let mut normals = VertexBuffer::empty(context, mesh.normals.len()).unwrap();
+    {
+      let mut mapped = normals.map();
+      for i in 0..mesh.normals.len() / 3 {
+        mapped[i] = Normal { normal: (
+          mesh.normals[i * 3 + 0],
+          mesh.normals[i * 3 + 1],
+          mesh.normals[i * 3 + 2],
+        )};
+      }
+    }
+
+    let mut vertices = VertexBuffer::empty(context, mesh.positions.len()).unwrap();
+    {
+      let mut mapped = vertices.map();
+      for i in 0..mesh.positions.len() / 3 {
+        mapped[i] = Vertex { position: (
+          mesh.positions[i * 3 + 0],
+          mesh.positions[i * 3 + 1],
+          mesh.positions[i * 3 + 2],
+        )};
+      }
+    }
+
+    let mut texcoords = VertexBuffer::empty(context, mesh.texcoords.len()).unwrap();
+    {
+      let mut mapped = texcoords.map();
+      for i in 0..mesh.texcoords.len() / 2 {
+        mapped[i] = Texcoord { texcoord: (
+          mesh.texcoords[i * 2 + 0],
+          mesh.texcoords[i * 2 + 1],
+        )};
+      }
+    }
+
+    Geometry {
+      indices: indices,
+      normals: normals,
+      vertices: vertices,
+      texcoords: texcoords,
+    }
+  }
+
   pub fn new_quad(context: &GlutinFacade, size: [f32; 2]) -> Geometry {
     let width_half = size[0] * 0.5;
     let height_half = size[1] * 0.5;
@@ -58,7 +116,7 @@ impl Geometry {
       indices: Some(IndexBuffer::new(
           context,
           PrimitiveType::TriangleStrip,
-          &[1, 2, 0, 3u16]).unwrap()),
+          &[1, 2, 0, 3]).unwrap()),
       normals: VertexBuffer::new(context, &[
           Normal { normal: (0.0, 0.0, 1.0) },
           Normal { normal: (0.0, 0.0, 1.0) },
@@ -77,7 +135,7 @@ impl Geometry {
     }
   }
 
-  pub fn borrow_indices<'a>(&'a self) -> Result<&'a IndexBuffer<u16>, &str> {
+  pub fn borrow_indices<'a>(&'a self) -> Result<&'a IndexBuffer<u32>, &str> {
     match self.indices {
       Some(ref x) => Ok(x),
       None => Err("Nope"),

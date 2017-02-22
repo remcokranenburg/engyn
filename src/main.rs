@@ -21,6 +21,7 @@ extern crate image;
 extern crate cgmath;
 extern crate rand;
 extern crate rust_webvr as webvr;
+extern crate tobj;
 
 mod camera;
 mod geometry;
