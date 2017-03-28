@@ -347,10 +347,12 @@ fn main() {
             object.draw(&mut framebuffer, projection, view, &render_program, &render_params);
           }
 
+          let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
+
           for (i, ref gamepad) in gamepads.iter().enumerate() {
             let pose = gamepad.borrow().state().pose;
             let rotation = match pose.orientation {
-              Some(orientation) => Matrix4::from(Quaternion::from(orientation)),
+              Some(o) => Matrix4::from(Quaternion::new(o[3], o[0], o[1], o[2])), // WebVR presents quaternions as (x, y, z, w)
               None => Matrix4::<f32>::identity(),
             };
             let position = match pose.position {
@@ -358,20 +360,7 @@ fn main() {
               None => Matrix4::<f32>::identity(),
             };
 
-            gamepad_models[i].transform = position * standing_transform.inverse_transform().unwrap() * rotation;
-            fn matprint(mat: Matrix4<f32>) {
-              for v in AsRef::<[[f32; 4]; 4]>::as_ref(&mat) {
-                for x in v {
-                  print!("{} ", x);
-                }
-                println!("");
-              }
-            }
-            println!("pos gamepad {}:", i);
-            matprint(position);
-            println!("rot:");
-            matprint(rotation);
-
+            gamepad_models[i].transform = inverse_standing_transform * position * rotation;
             gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params);
           }
         }
