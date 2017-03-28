@@ -55,6 +55,22 @@ impl<'a> Object<'a> {
     }
   }
 
+  pub fn new_triangle(context: &GlutinFacade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
+      rot: [f32;3], scale: [f32;3]) -> Object<'a> {
+    let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
+    let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
+    let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
+    let matrix = translation * scale * rotation;
+
+    Object {
+      mesh: Some(Mesh {
+        geometry: Geometry::new_triangle(context, size),
+        material: Material { albedo_map: tex, metalness: 0.0, reflectivity: 0.0 },
+      }),
+      transform: matrix,
+    }
+  }
+
   pub fn draw<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
       program: &Program, render_params: &DrawParameters)
       where S: Surface {

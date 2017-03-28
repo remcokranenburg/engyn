@@ -33,6 +33,7 @@ mod teapot;
 
 use cgmath::Deg;
 use cgmath::Matrix4;
+use cgmath::Quaternion;
 use cgmath::Rad;
 use cgmath::SquareMatrix;
 use cgmath::Transform;
@@ -229,42 +230,20 @@ fn main() {
 
   let mut world = Vec::new();
 
-  let my_triangle = Object {
-    mesh: Some(Mesh {
-      geometry: Geometry {
-        indices: None,
-        normals: VertexBuffer::new(&context, &[
-            Normal { normal: (0.0, 0.0, 1.0) },
-            Normal { normal: (0.0, 0.0, 1.0) },
-            Normal { normal: (0.0, 0.0, 1.0) }]).unwrap(),
-        vertices: VertexBuffer::new(&context, &[
-            Vertex { position: (-0.50, -0.50, 0.00) },
-            Vertex { position: ( 0.50, -0.50, 0.00) },
-            Vertex { position: ( 0.00,  0.50, 0.00) } ]).unwrap(),
-        texcoords: VertexBuffer::new(&context, &[
-            Texcoord { texcoord: (0.0, 0.0) },
-            Texcoord { texcoord: (1.0, 0.0) },
-            Texcoord { texcoord: (0.5, 1.0) },
-          ]).unwrap(),
-      },
-      material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
-    }),
-    transform: Matrix4::<f32>::identity(),
-  };
+  // a triangle
+  world.push(Object::new_triangle(&context, &marble_tex, [1.0, 1.0], [0.0, 0.0, 0.0],
+      [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
 
-  world.push(my_triangle);
-
-  let my_floor = Object {
+  // a terrain mesh
+  world.push(Object {
     mesh: Some(Mesh {
       geometry: Geometry::from_obj(&context, "data/terrain.obj"),
       material: Material { albedo_map: &terrain_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
     transform: Matrix4::<f32>::identity(),
-  };
+  });
 
-  world.push(my_floor);
-
-  // teapot
+  // a teapot
 
   let my_teapot_texcoords = {
     let mut texcoords = [Texcoord { texcoord: (0.0, 0.0) }; 531];
@@ -315,10 +294,21 @@ fn main() {
 
   let window = context.get_window().unwrap();
 
+  // create a model for each gamepad
+  let gamepads = vr.get_gamepads();
+  let mut gamepad_models = Vec::new();
+
+  println!("Found {} controller{}!", gamepads.len(), match gamepads.len() { 1 => "", _ => "s" });
+
+  for gamepad in &gamepads {
+    println!("We've found a gamepad!");
+    gamepad_models.push(Object::new_triangle(&context, &marble_tex, [0.1, 0.5], [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
+  }
+
   loop {
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
-
 
     match displays.get(0) {
       Some(d) => {
@@ -355,6 +345,23 @@ fn main() {
 
           for object in &mut world {
             object.draw(&mut framebuffer, projection, view, &render_program, &render_params);
+          }
+
+          let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
+
+          for (i, ref gamepad) in gamepads.iter().enumerate() {
+            let pose = gamepad.borrow().state().pose;
+            let rotation = match pose.orientation {
+              Some(o) => Matrix4::from(Quaternion::new(o[3], o[0], o[1], o[2])), // WebVR presents quaternions as (x, y, z, w)
+              None => Matrix4::<f32>::identity(),
+            };
+            let position = match pose.position {
+              Some(position) => Matrix4::from_translation(Vector3::from(position)),
+              None => Matrix4::<f32>::identity(),
+            };
+
+            gamepad_models[i].transform = inverse_standing_transform * position * rotation;
+            gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params);
           }
         }
 
