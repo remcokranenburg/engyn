@@ -302,8 +302,13 @@ fn main() {
 
   for gamepad in &gamepads {
     println!("We've found a gamepad!");
-    gamepad_models.push(Object::new_triangle(&context, &marble_tex, [0.1, 0.5], [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
+    gamepad_models.push(Object {
+      mesh: Some(Mesh {
+        geometry: Geometry::from_obj(&context, "data/vive-controller.obj"),
+        material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
+      }),
+      transform: Matrix4::<f32>::identity(),
+    });
   }
 
   loop {
