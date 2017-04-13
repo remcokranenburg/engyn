@@ -66,15 +66,14 @@ use glium::texture::Texture2d;
 use glium::vertex::VertexBuffer;
 use std::path::Path;
 use std::f32;
+use webvr::VREvent;
 use webvr::VRDisplayEvent;
 use webvr::VRLayer;
 use webvr::VRServiceManager;
 
 use camera::FpsCamera;
 use geometry::Geometry;
-use geometry::Normal;
 use geometry::Texcoord;
-use geometry::Vertex;
 use material::Material;
 use mesh::Mesh;
 use object::Object;
@@ -300,7 +299,7 @@ fn main() {
 
   println!("Found {} controller{}!", gamepads.len(), match gamepads.len() { 1 => "", _ => "s" });
 
-  for gamepad in &gamepads {
+  for _ in &gamepads {
     println!("We've found a gamepad!");
     gamepad_models.push(Object {
       mesh: Some(Mesh {
@@ -401,16 +400,16 @@ fn main() {
         if event_counter % 100 == 0 {
           for event in vr.poll_events() {
             match event {
-              VRDisplayEvent::Connect(data) => {
+              VREvent::Display(VRDisplayEvent::Connect(data)) => {
                 println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
               },
-              VRDisplayEvent::Disconnect(display_id) => {
+              VREvent::Display(VRDisplayEvent::Disconnect(display_id)) => {
                 println!("VR display {}: Disconnected.", display_id);
               },
-              VRDisplayEvent::Activate(data, _) => {
+              VREvent::Display(VRDisplayEvent::Activate(data, _)) => {
                 println!("VR display {}: Activated.", data.display_id);
               },
-              VRDisplayEvent::Deactivate(data, _) => {
+              VREvent::Display(VRDisplayEvent::Deactivate(data, _)) => {
                 println!("VR display {}: Deactivated.", data.display_id);
               },
               _ => println!("VR event: {:?}", event),
