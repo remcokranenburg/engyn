@@ -53,7 +53,7 @@ pub struct Geometry {
 
 impl Geometry {
   pub fn from_obj(context: &GlutinFacade, filename: &str) -> Geometry {
-    let (models, materials) = tobj::load_obj(&Path::new(filename)).unwrap();
+    let (models, _) = tobj::load_obj(&Path::new(filename)).unwrap();
 
     assert!(models.len() > 0);
 
