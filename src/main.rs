@@ -29,6 +29,7 @@ mod material;
 mod math;
 mod mesh;
 mod object;
+mod stats;
 mod teapot;
 
 use cgmath::Deg;
@@ -77,6 +78,7 @@ use geometry::Texcoord;
 use material::Material;
 use mesh::Mesh;
 use object::Object;
+use stats::Stats;
 
 fn load_texture(context: &GlutinFacade, name: &str) -> SrgbTexture2d {
   let image = image::open(&Path::new(&name)).unwrap().to_rgba();
@@ -310,6 +312,8 @@ fn main() {
     });
   }
 
+  let mut frame_stats = Stats::new();
+
   loop {
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
@@ -495,5 +499,7 @@ fn main() {
         _ => {}
       };
     }
+
+    frame_stats.process_frame_end();
   }
 }

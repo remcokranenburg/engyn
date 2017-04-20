@@ -4,9 +4,10 @@ version = "0.1.0"
 authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 
 [dependencies]
+cgmath = "*"
 glium = "*"
 image = "*"
-cgmath = "*"
 rand = "*"
 rust-webvr = "*"
+time = "*"
 tobj = "*"
