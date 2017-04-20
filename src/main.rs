@@ -29,7 +29,7 @@ mod material;
 mod math;
 mod mesh;
 mod object;
-mod stats;
+mod performance;
 mod teapot;
 
 use cgmath::Deg;
@@ -78,7 +78,7 @@ use geometry::Texcoord;
 use material::Material;
 use mesh::Mesh;
 use object::Object;
-use stats::Stats;
+use performance::FramePerformance;
 
 fn load_texture(context: &GlutinFacade, name: &str) -> SrgbTexture2d {
   let image = image::open(&Path::new(&name)).unwrap().to_rgba();
@@ -311,7 +311,7 @@ fn main() {
     });
   }
 
-  let mut frame_stats = Stats::new();
+  let mut frame_performance = FramePerformance::new();
 
   loop {
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
@@ -476,12 +476,12 @@ fn main() {
             },
             VirtualKeyCode::Equals => {
               if element_state == ElementState::Pressed {
-                frame_stats.reduce_fps();
+                frame_performance.reduce_fps();
               };
             },
             VirtualKeyCode::Minus => {
               if element_state == ElementState::Pressed {
-                frame_stats.increase_fps();
+                frame_performance.increase_fps();
               }
             }
             _ => {},
@@ -509,6 +509,6 @@ fn main() {
       };
     }
 
-    frame_stats.process_frame_end();
+    frame_performance.process_frame_end();
   }
 }

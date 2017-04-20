@@ -22,26 +22,26 @@ use std::thread;
 
 // these target frame times will cause vsync misses so it hits the desired frame rate
 const TARGET_FRAME_TIMES: [u32; 4] = [
-    11_000_000u32,  // 90fps target for 90fps
-    22_000_000u32,  // 45fps target for 45fps
-    33_000_000u32,  // 30fps target for 30fps
-    66_000_000u32,  // 20fps target for 15fps
+    11_000_000u32,  // 11ms target for 90fps
+    22_000_000u32,  // 22ms target for 45fps
+    33_000_000u32,  // 33ms target for 30fps
+    66_000_000u32,  // 66ms target for 15fps
 ];
 
 fn duration_as_millis(duration: Duration) -> f64 {
   ((duration.as_secs() * 1000) as f64) + (duration.subsec_nanos() as f64 / 1_000_000f64)
 }
 
-pub struct Stats {
+pub struct FramePerformance {
   time_last_frame: Instant,
   time_last_update: Instant,
   frame_count: u32,
   current_fps_target: usize,
 }
 
-impl Stats {
-  pub fn new() -> Stats {
-    Stats {
+impl FramePerformance {
+  pub fn new() -> FramePerformance {
+    FramePerformance {
       time_last_frame: Instant::now(),
       time_last_update: Instant::now(),
       frame_count: 0,
