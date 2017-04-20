@@ -107,7 +107,6 @@ fn main() {
       let context = WindowBuilder::new()
         .with_title(format!("Engyn"))
         .with_depth_buffer(24)
-        .with_vsync()
         .with_dimensions(window_width, window_height)
         .build_glium()
         .unwrap();
