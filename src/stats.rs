@@ -20,6 +20,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub struct Stats {
+  time_last_frame: Instant,
   time_last_update: Instant,
   frame_count: u64,
 }
@@ -27,6 +28,7 @@ pub struct Stats {
 impl Stats {
   pub fn new() -> Stats {
     Stats {
+      time_last_frame: Instant::now(),
       time_last_update: Instant::now(),
       frame_count: 0,
     }
@@ -36,6 +38,14 @@ impl Stats {
     self.frame_count += 1;
     let time_frame_end = Instant::now();
     let sum_frame_time = time_frame_end.duration_since(self.time_last_update);
+
+    let current_frame_time = time_frame_end.duration_since(self.time_last_frame);
+    if current_frame_time > Duration::from_millis(20) {
+      let current_frame_time_as_millis = (current_frame_time.as_secs() * 1000) as f32 +
+          (current_frame_time.subsec_nanos() as f32 / 1_000_000f32);
+      println!("Frame drop: {}ms", current_frame_time_as_millis);
+    }
+    self.time_last_frame = time_frame_end;
 
     if sum_frame_time >= Duration::new(1, 0) {
       let sum_frame_time_as_millis = (sum_frame_time.as_secs() * 1000) as f32 +
