@@ -474,6 +474,16 @@ fn main() {
                 ElementState::Released => fps_camera.right = false,
               };
             },
+            VirtualKeyCode::Equals => {
+              if element_state == ElementState::Pressed {
+                frame_stats.reduce_fps();
+              };
+            },
+            VirtualKeyCode::Minus => {
+              if element_state == ElementState::Pressed {
+                frame_stats.increase_fps();
+              }
+            }
             _ => {},
           }
         },
