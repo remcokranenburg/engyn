@@ -35,7 +35,8 @@ fn duration_as_millis(duration: Duration) -> f64 {
 pub struct FramePerformance {
   time_last_frame: Instant,
   time_last_update: Instant,
-  frame_count: u32,
+  time_frame_start: Instant,
+  frame_count: i32,
   current_fps_target: usize,
 }
 
@@ -44,6 +45,7 @@ impl FramePerformance {
     FramePerformance {
       time_last_frame: Instant::now(),
       time_last_update: Instant::now(),
+      time_frame_start: Instant::now(),
       frame_count: 0,
       current_fps_target: 0,
     }
@@ -63,30 +65,34 @@ impl FramePerformance {
     }
   }
 
+  pub fn process_frame_start(&mut self) {
+      self.frame_count += 1;
+      self.time_frame_start = Instant::now();
+  }
+
   pub fn process_frame_end(&mut self) {
-    self.frame_count += 1;
-    let time_frame_end = Instant::now();
-    let sum_frame_time = time_frame_end.duration_since(self.time_last_update);
-    let current_frame_time = time_frame_end.duration_since(self.time_last_frame);
+    let sum_frame_time = self.time_frame_start.duration_since(self.time_last_update);
+    let current_frame_time = Instant::now().duration_since(self.time_frame_start);
 
     if sum_frame_time >= Duration::new(1, 0) {
       let sum_frame_time_as_millis = duration_as_millis(sum_frame_time);
       let fps = self.frame_count as f64 / (sum_frame_time_as_millis / 1000f64);
       let frame_time = sum_frame_time_as_millis / self.frame_count as f64;
-      println!("Avg FPS: {} ({}ms), dropped {} frames",
+      println!("Avg FPS: {} ({}ms), dropped {} frames, Avg drawing time: {}ms",
           fps,
           frame_time,
-          90 - self.frame_count);
+          90 - self.frame_count,
+          duration_as_millis(current_frame_time));
       self.frame_count = 0;
-      self.time_last_update = time_frame_end;
+      self.time_last_update = self.time_frame_start;
     }
 
     let target_frame_time = Duration::new(0, TARGET_FRAME_TIMES[self.current_fps_target]);
 
-    if self.current_fps_target > 0 {
+    if self.current_fps_target > 0 && current_frame_time < target_frame_time {
       thread::sleep(target_frame_time - current_frame_time);
     }
 
-    self.time_last_frame = time_frame_end;
+    self.time_last_frame = self.time_frame_start;
   }
 }

@@ -314,6 +314,8 @@ fn main() {
   let mut frame_performance = FramePerformance::new();
 
   loop {
+    frame_performance.process_frame_start();
+    
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
 
