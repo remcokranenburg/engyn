@@ -203,7 +203,7 @@ fn main() {
         layout(std140) uniform;
 
         const float SCREEN_GAMMA = 2.2;
-        const float INTENSITY = 1.0;
+        const float INTENSITY = 20.0;
 
         struct Light {
           vec3 color;
@@ -220,26 +220,31 @@ fn main() {
 
         out vec4 color;
 
+        vec3 attenuate(vec3 color, vec3 light_position, float radius, vec3 surface_position) {
+          float dist = distance(light_position, surface_position);
+          float attenuation_factor = clamp(1.0 - dist * dist / (radius * radius), 0.0, 1.0);
+          attenuation_factor *= attenuation_factor;
+          return color * attenuation_factor;
+        }
+
         vec3 calculate_lighting(
             vec3 light_position,
             vec3 normal,
             vec3 combined_color) {
           vec3 light_direction = normalize(light_position - v_vertex_position);
           float lambertian = max(dot(light_direction, normal), 0.0);
-          return lambertian * combined_color * INTENSITY;
+          return lambertian * combined_color;
         }
 
         void main() {
           vec3 normal = normalize(v_normal);
           vec3 material_color = vec3(texture(albedo_map, v_texcoord));
-
           vec3 color_linear = vec3(0.0);
 
           for(int i = 0; i < num_lights; i++) {
-            color_linear += calculate_lighting(
-                lights[i].position,
-                normal,
-                lights[i].color * material_color);
+            vec3 color_one_light = calculate_lighting(lights[i].position, normal, lights[i].color * material_color);
+            color_one_light = attenuate(color_one_light, lights[i].position, INTENSITY, v_vertex_position);
+            color_linear += color_one_light;
           }
 
           vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
@@ -330,11 +335,12 @@ fn main() {
 
   // add a light
 
-  let num_lights = 3;
+  let num_lights = 4;
   let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
-  lights[0] = Light { color: [1.0, 0.5, 0.5], position: [100.0, 100.0, 100.0] };
-  lights[1] = Light { color: [0.5, 1.0, 0.5], position: [100.0, 100.0, -100.0] };
-  lights[2] = Light { color: [0.5, 0.5, 1.0], position: [-100.0, 100.0, -100.0] };
+  lights[0] = Light { color: [1.0, 0.0, 0.0], position: [10.0, 10.0, 10.0] };
+  lights[1] = Light { color: [0.0, 1.0, 0.0], position: [10.0, 10.0, -10.0] };
+  lights[2] = Light { color: [0.0, 0.0, 1.0], position: [-10.0, 10.0, -10.0] };
+  lights[2] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
 
   let fbo_to_screen = Geometry::new_quad(&context, [2.0, 2.0]);
 
