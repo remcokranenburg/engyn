@@ -196,12 +196,11 @@ fn main() {
           gl_Position = projection * position_in_eye_coords;
         }
       "#,
-      &r#"
+      &str::replace(r#"
         #version 330
         layout(std140) uniform;
 
         const float SCREEN_GAMMA = 2.2;
-        const int MAX_NUM_LIGHTS = 32;
         const float INTENSITY = 1.0;
 
         struct Light {
@@ -244,7 +243,7 @@ fn main() {
           vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
           color = vec4(color_gamma_corrected, 1.0);
         }
-      "#,
+      "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
       None).unwrap();
 
   let compositor_program = Program::from_source(
