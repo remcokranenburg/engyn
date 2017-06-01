@@ -16,9 +16,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#[derive(Copy, Clone, Default)]
 pub struct Light {
   pub color: [f32; 3],
   pub position: [f32; 3],
 }
-
-implement_uniform_block!(Light, color, position);

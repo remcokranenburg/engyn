@@ -32,6 +32,7 @@ mod mesh;
 mod object;
 mod performance;
 mod teapot;
+mod uniforms;
 
 use cgmath::Deg;
 use cgmath::Matrix4;
@@ -196,10 +197,11 @@ fn main() {
         }
       "#,
       &r#"
-        #version 140
+        #version 330
+        layout(std140) uniform;
 
         const float screen_gamma = 2.2;
-        const int number_of_lights = 3;
+        const int max_num_lights = 32;
         const float intensity = 0.5;
 
         struct Light {
@@ -208,12 +210,8 @@ fn main() {
         };
 
         uniform sampler2D albedo_map;
-        uniform vec3 light0_color;
-        uniform vec3 light0_position;
-        uniform vec3 light1_color;
-        uniform vec3 light1_position;
-        uniform vec3 light2_color;
-        uniform vec3 light2_position;
+        uniform int num_lights;
+        uniform Light lights[max_num_lights];
 
         in vec3 v_normal;
         in vec2 v_texcoord;
@@ -231,17 +229,12 @@ fn main() {
         }
 
         void main() {
-          Light lights[number_of_lights] = Light[number_of_lights](
-              Light(light0_color, light0_position),
-              Light(light1_color, light1_position),
-              Light(light2_color, light2_position));
-
           vec3 normal = normalize(v_normal);
           vec3 material_color = vec3(texture(albedo_map, v_texcoord));
 
           vec3 color_linear = vec3(0.0);
 
-          for(int i = 0; i < number_of_lights; i++) {
+          for(int i = 0; i < num_lights; i++) {
             color_linear += calculate_lighting(
                 lights[i].position,
                 normal,
@@ -336,11 +329,11 @@ fn main() {
 
   // add a light
 
-  let lights = [
-      Light { color: [1.0, 0.5, 0.5], position: [100.0, 100.0, 100.0] },
-      Light { color: [0.5, 1.0, 0.5], position: [100.0, 100.0, -100.0] },
-      Light { color: [0.5, 0.5, 1.0], position: [-100.0, 100.0, -100.0] }
-  ];
+  let num_lights = 3;
+  let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
+  lights[0] = Light { color: [1.0, 0.0, 0.0], position: [100.0, 100.0, 100.0] };
+  lights[1] = Light { color: [0.0, 1.0, 0.0], position: [100.0, 100.0, -100.0] };
+  lights[2] = Light { color: [0.0, 0.0, 1.0], position: [-100.0, 100.0, -100.0] };
 
   let fbo_to_screen = Geometry::new_quad(&context, [2.0, 2.0]);
 
@@ -414,7 +407,7 @@ fn main() {
           render_params.viewport = viewport;
 
           for object in &mut world {
-            object.draw(&mut framebuffer, projection, view, &render_program, &render_params, &lights);
+            object.draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
           }
 
           let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
@@ -431,7 +424,7 @@ fn main() {
             };
 
             gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-            gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, &lights);
+            gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
           }
         }
 
@@ -496,7 +489,7 @@ fn main() {
         render_params.viewport = viewport;
 
         for object in &mut world {
-          object.draw(&mut target, projection, view, &render_program, &render_params, &lights);
+          object.draw(&mut target, projection, view, &render_program, &render_params, num_lights, lights);
         }
 
         target.finish().unwrap();

@@ -33,6 +33,7 @@ use light::Light;
 use material::Material;
 use math;
 use mesh::Mesh;
+use uniforms::ObjectUniforms;
 
 pub struct Object<'a> {
   pub mesh: Option<Mesh<'a>>,
@@ -73,23 +74,20 @@ impl<'a> Object<'a> {
   }
 
   pub fn draw<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      program: &Program, render_params: &DrawParameters, lights: &[Light; 3])
+      program: &Program, render_params: &DrawParameters, num_lights: i32, lights: [Light; 32])
       where S: Surface {
     match self.mesh {
       Some(ref m) => {
-        let uniforms = uniform! {
+
+        let uniforms = ObjectUniforms {
           projection: projection,
           view: view,
           model: math::matrix_to_uniform(self.transform),
           albedo_map: m.material.albedo_map,
           metalness: m.material.metalness,
           reflectivity: m.material.reflectivity,
-          light0_color: lights[0].color,
-          light0_position: lights[0].position,
-          light1_color: lights[1].color,
-          light1_position: lights[1].position,
-          light2_color: lights[2].color,
-          light2_position: lights[2].position,
+          num_lights: num_lights,
+          lights: lights,
         };
 
         match m.geometry.indices {
