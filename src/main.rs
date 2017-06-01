@@ -188,12 +188,14 @@ fn main() {
         out vec3 v_vertex_position;
 
         void main() {
-          vec4 position_in_eye_coords = view * model * vec4(position, 1.0);
+          mat4 normal_matrix = transpose(inverse(model)); // TODO: put this in host code
+          vec4 position_global = model * vec4(position, 1.0);
+          vec4 position_eye = view * position_global;
 
           v_texcoord = texcoord;
-          v_normal = normal;
-          v_vertex_position = vec3(position);
-          gl_Position = projection * position_in_eye_coords;
+          v_normal = vec3(normal_matrix * vec4(normal, 1.0));
+          v_vertex_position = vec3(position_global);
+          gl_Position = projection * position_eye;
         }
       "#,
       &str::replace(r#"
