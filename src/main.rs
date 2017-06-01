@@ -200,9 +200,9 @@ fn main() {
         #version 330
         layout(std140) uniform;
 
-        const float screen_gamma = 2.2;
-        const int max_num_lights = 32;
-        const float intensity = 0.5;
+        const float SCREEN_GAMMA = 2.2;
+        const int MAX_NUM_LIGHTS = 32;
+        const float INTENSITY = 1.0;
 
         struct Light {
           vec3 color;
@@ -211,7 +211,7 @@ fn main() {
 
         uniform sampler2D albedo_map;
         uniform int num_lights;
-        uniform Light lights[max_num_lights];
+        uniform Light lights[MAX_NUM_LIGHTS];
 
         in vec3 v_normal;
         in vec2 v_texcoord;
@@ -225,7 +225,7 @@ fn main() {
             vec3 combined_color) {
           vec3 light_direction = normalize(light_position - v_vertex_position);
           float lambertian = max(dot(light_direction, normal), 0.0);
-          return lambertian * combined_color * intensity;
+          return lambertian * combined_color * INTENSITY;
         }
 
         void main() {
@@ -241,8 +241,8 @@ fn main() {
                 lights[i].color * material_color);
           }
 
-          //vec3 color_gamma_corrected = pow(color_linear, vec3(1.0/screen_gamma)); // assumes textures are linearized (i.e. not sRGB))
-          color = vec4(color_linear, 1.0);
+          vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
+          color = vec4(color_gamma_corrected, 1.0);
         }
       "#,
       None).unwrap();
@@ -331,9 +331,9 @@ fn main() {
 
   let num_lights = 3;
   let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
-  lights[0] = Light { color: [1.0, 0.0, 0.0], position: [100.0, 100.0, 100.0] };
-  lights[1] = Light { color: [0.0, 1.0, 0.0], position: [100.0, 100.0, -100.0] };
-  lights[2] = Light { color: [0.0, 0.0, 1.0], position: [-100.0, 100.0, -100.0] };
+  lights[0] = Light { color: [1.0, 0.5, 0.5], position: [100.0, 100.0, 100.0] };
+  lights[1] = Light { color: [0.5, 1.0, 0.5], position: [100.0, 100.0, -100.0] };
+  lights[2] = Light { color: [0.5, 0.5, 1.0], position: [-100.0, 100.0, -100.0] };
 
   let fbo_to_screen = Geometry::new_quad(&context, [2.0, 2.0]);
 
