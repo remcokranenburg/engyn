@@ -25,12 +25,14 @@ extern crate tobj;
 
 mod camera;
 mod geometry;
+mod light;
 mod material;
 mod math;
 mod mesh;
 mod object;
 mod performance;
 mod teapot;
+mod uniforms;
 
 use cgmath::Deg;
 use cgmath::Matrix4;
@@ -73,6 +75,7 @@ use webvr::VRLayer;
 use webvr::VRServiceManager;
 
 use camera::FpsCamera;
+use light::Light;
 use geometry::Geometry;
 use geometry::Texcoord;
 use material::Material;
@@ -175,30 +178,74 @@ fn main() {
         uniform mat4 projection;
         uniform mat4 view;
         uniform mat4 model;
+
         in vec3 position;
         in vec3 normal;
         in vec2 texcoord;
+
         out vec3 v_normal;
         out vec2 v_texcoord;
+        out vec3 v_vertex_position;
 
         void main() {
+          mat4 normal_matrix = transpose(inverse(model)); // TODO: put this in host code
+          vec4 position_global = model * vec4(position, 1.0);
+          vec4 position_eye = view * position_global;
+
           v_texcoord = texcoord;
-          v_normal = normal;
-          gl_Position = projection * view * model * vec4(position, 1.0);
+          v_normal = vec3(normal_matrix * vec4(normal, 1.0));
+          v_vertex_position = vec3(position_global);
+          gl_Position = projection * position_eye;
         }
       "#,
-      &r#"
-        #version 140
+      &str::replace(r#"
+        #version 330
+        layout(std140) uniform;
+
+        const float SCREEN_GAMMA = 2.2;
+        const float INTENSITY = 1.0;
+
+        struct Light {
+          vec3 color;
+          vec3 position;
+        };
 
         uniform sampler2D albedo_map;
+        uniform int num_lights;
+        uniform Light lights[MAX_NUM_LIGHTS];
+
         in vec3 v_normal;
         in vec2 v_texcoord;
+        in vec3 v_vertex_position;
+
         out vec4 color;
 
-        void main() {
-          color = texture(albedo_map, v_texcoord);
+        vec3 calculate_lighting(
+            vec3 light_position,
+            vec3 normal,
+            vec3 combined_color) {
+          vec3 light_direction = normalize(light_position - v_vertex_position);
+          float lambertian = max(dot(light_direction, normal), 0.0);
+          return lambertian * combined_color * INTENSITY;
         }
-      "#,
+
+        void main() {
+          vec3 normal = normalize(v_normal);
+          vec3 material_color = vec3(texture(albedo_map, v_texcoord));
+
+          vec3 color_linear = vec3(0.0);
+
+          for(int i = 0; i < num_lights; i++) {
+            color_linear += calculate_lighting(
+                lights[i].position,
+                normal,
+                lights[i].color * material_color);
+          }
+
+          vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
+          color = vec4(color_gamma_corrected, 1.0);
+        }
+      "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
       None).unwrap();
 
   let compositor_program = Program::from_source(
@@ -281,6 +328,14 @@ fn main() {
   world.push(Object::new_plane(&context, &empty_tex, [0.0001,0.0001], [-0.1, 0.1, 0.0],
       [0.0, 0.0, 0.0], [-1.0,1.0,1.0]));
 
+  // add a light
+
+  let num_lights = 3;
+  let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
+  lights[0] = Light { color: [1.0, 0.5, 0.5], position: [100.0, 100.0, 100.0] };
+  lights[1] = Light { color: [0.5, 1.0, 0.5], position: [100.0, 100.0, -100.0] };
+  lights[2] = Light { color: [0.5, 0.5, 1.0], position: [-100.0, 100.0, -100.0] };
+
   let fbo_to_screen = Geometry::new_quad(&context, [2.0, 2.0]);
 
   let mut render_params = DrawParameters {
@@ -315,7 +370,7 @@ fn main() {
 
   loop {
     frame_performance.process_frame_start();
-    
+
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
 
@@ -328,7 +383,7 @@ fn main() {
         let standing_transform = if let Some(ref stage) = data.stage_parameters {
             math::vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
         } else {
-            // Stage parameters not avaialbe yet or unsupported
+            // Stage parameters not available yet or unsupported
             // Assume 0.75m transform height
             math::vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
         };
@@ -353,7 +408,7 @@ fn main() {
           render_params.viewport = viewport;
 
           for object in &mut world {
-            object.draw(&mut framebuffer, projection, view, &render_program, &render_params);
+            object.draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
           }
 
           let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
@@ -370,7 +425,7 @@ fn main() {
             };
 
             gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-            gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params);
+            gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
           }
         }
 
@@ -435,7 +490,7 @@ fn main() {
         render_params.viewport = viewport;
 
         for object in &mut world {
-          object.draw(&mut target, projection, view, &render_program, &render_params);
+          object.draw(&mut target, projection, view, &render_program, &render_params, num_lights, lights);
         }
 
         target.finish().unwrap();

@@ -29,9 +29,11 @@ use glium::index::PrimitiveType;
 use glium::texture::SrgbTexture2d;
 
 use geometry::Geometry;
+use light::Light;
 use material::Material;
 use math;
 use mesh::Mesh;
+use uniforms::ObjectUniforms;
 
 pub struct Object<'a> {
   pub mesh: Option<Mesh<'a>>,
@@ -72,17 +74,20 @@ impl<'a> Object<'a> {
   }
 
   pub fn draw<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      program: &Program, render_params: &DrawParameters)
+      program: &Program, render_params: &DrawParameters, num_lights: i32, lights: [Light; 32])
       where S: Surface {
     match self.mesh {
       Some(ref m) => {
-        let uniforms = uniform! {
+
+        let uniforms = ObjectUniforms {
           projection: projection,
           view: view,
           model: math::matrix_to_uniform(self.transform),
           albedo_map: m.material.albedo_map,
           metalness: m.material.metalness,
           reflectivity: m.material.reflectivity,
+          num_lights: num_lights,
+          lights: lights,
         };
 
         match m.geometry.indices {
