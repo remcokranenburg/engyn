@@ -19,12 +19,14 @@
 #[macro_use] extern crate glium;
 extern crate image;
 extern crate cgmath;
+#[macro_use] extern crate conrod;
 extern crate rand;
 extern crate rust_webvr as webvr;
 extern crate tobj;
 
 mod camera;
 mod geometry;
+mod gui;
 mod light;
 mod material;
 mod math;
@@ -78,6 +80,7 @@ use camera::FpsCamera;
 use light::Light;
 use geometry::Geometry;
 use geometry::Texcoord;
+use gui::Gui;
 use material::Material;
 use mesh::Mesh;
 use object::Object;
@@ -372,6 +375,8 @@ fn main() {
     });
   }
 
+  let mut gui = Gui::new(&context, render_dimensions.0 as f64, render_dimensions.1 as f64);
+
   let mut frame_performance = FramePerformance::new();
 
   loop {
@@ -459,6 +464,8 @@ fn main() {
             &uniforms,
             &Default::default()).unwrap();
 
+        gui.draw(&mut target);
+
         target.finish().unwrap();
 
         // once every 100 frames, check for VR events
@@ -499,6 +506,8 @@ fn main() {
           object.draw(&mut target, projection, view, &render_program, &render_params, num_lights, lights);
         }
 
+        gui.draw(&mut target);
+
         target.finish().unwrap();
       }
     }
@@ -506,6 +515,10 @@ fn main() {
     assert_no_gl_error!(context);
 
     for event in context.poll_events() {
+      if let Some(event) = conrod::backend::winit::convert(event.clone(), &context) {
+        gui.handle_event(event);
+      }
+
       match event {
         Event::Closed | Event::KeyboardInput(_, _, Some(VirtualKeyCode::Escape)) => {
           println!("Exiting...");

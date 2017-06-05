@@ -27,8 +27,8 @@ Licensing for included third-party works:
 **Webtreats Tileable Stone, Pavement, and Marble Textures 3**
 
 - Copyright (c) 2010 [webtreats](https://www.flickr.com/photos/webtreatsetc/)
-- Path: data/marble.jpg
 - License: [CC-BY-2.0](https://creativecommons.org/licenses/by/2.0/)
+- Path: data/marble.jpg
 - Source: <https://www.flickr.com/photos/webtreatsetc/4724732541>
 
 **Utah Teapot**
@@ -37,4 +37,11 @@ Licensing for included third-party works:
 - Converted to Rust in 2015 by [tomaka](https://github.com/tomaka)
 - License: [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0)
 - Path: src/teapot.rs
-- Source: <https://github.com/tomaka/glium/blob/master/book/tuto-07-teapot.rs>
+- Source: <https://github.com/tomaka/glium/blob/9172fcbf76cdb6380ecc40dc71696b45c7c09db6/book/tuto-07-teapot.rs>
+
+**Cantarell font**
+
+- Copyright (c) 2009 Dave Crossland
+- License: [OFL-1.1]()
+- Path: data/Cantarell-Regular.ttf
+- Source: <https://fonts.google.com/specimen/Cantarell>

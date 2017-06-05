@@ -5,7 +5,9 @@ reach a target frame rate. To this end, every graphical feature will be highly c
 detailed performance breakdowns will be generated that can be used to decide how to tune the
 algorithms.
 
-Currently, you can walk around in a simple static environment without any lighting.
+Currently, you can walk around in a simple static environment with basic dynamic lighting. In
+VR-mode, your controllers are visible. In regular mode, the text "Hello, world!" is drawn on top in
+the middle of the screen.
 
 ## How do I run this?
 
@@ -19,8 +21,9 @@ Currently, you can walk around in a simple static environment without any lighti
     cargo build
     ```
 
-3. Optional: if you want VR support, you'll need to obtain [openvr_api.dll][dll] from Valve's
-   repository and put it next to the `engyn.exe` binary in the `target/debug/` directory.
+3. Optional: if you want VR support, you'll need to [click here][dll] to download openvr_api.dll
+   from Valve's repository and put it next to the `engyn.exe` binary in the `target/debug/`
+   directory.
 
 4. Now you can run the program, like so:
 
