@@ -24,6 +24,7 @@ extern crate rand;
 extern crate rust_webvr as webvr;
 extern crate tobj;
 
+mod adaptive_canvas;
 mod camera;
 mod geometry;
 mod gui;
@@ -47,15 +48,9 @@ use glium::Depth;
 use glium::DepthTest;
 use glium::DisplayBuild;
 use glium::DrawParameters;
-use glium::GlObject;
 use glium::Program;
-use glium::Rect;
 use glium::Surface;
 use glium::backend::glutin_backend::GlutinFacade;
-use glium::framebuffer::DepthRenderBuffer;
-use glium::framebuffer::SimpleFrameBuffer;
-use glium::framebuffer::ToColorAttachment;
-use glium::framebuffer::ToDepthAttachment;
 use glium::glutin::Event;
 use glium::glutin::MouseCursor;
 use glium::glutin::CursorState;
@@ -64,18 +59,16 @@ use glium::glutin::VirtualKeyCode;
 use glium::glutin::WindowBuilder;
 use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
-use glium::texture::DepthFormat;
 use glium::texture::RawImage2d;
 use glium::texture::SrgbTexture2d;
-use glium::texture::Texture2d;
 use glium::vertex::VertexBuffer;
 use std::path::Path;
 use std::f32;
 use webvr::VREvent;
 use webvr::VRDisplayEvent;
-use webvr::VRLayer;
 use webvr::VRServiceManager;
 
+use adaptive_canvas::AdaptiveCanvas;
 use camera::FpsCamera;
 use light::Light;
 use geometry::Geometry;
@@ -120,12 +113,12 @@ fn main() {
       (true, context, (render_width, render_height))
     },
     None => {
-      println!("No VR device detected. Continuing in normal mode.");
+      println!("No VR device detected. Drawing on normal monitor.");
       let context = WindowBuilder::new()
         .with_title(format!("Engyn"))
         .with_depth_buffer(24)
         .with_vsync()
-        .with_dimensions(1280, 720)
+        .with_fullscreen(glium::glutin::get_primary_monitor())
         .build_glium()
         .unwrap();
 
@@ -150,28 +143,12 @@ fn main() {
   let terrain_tex = load_texture(&context, "data/terrain.png");
   println!("Textures loaded!");
 
-  let target_texture = Texture2d::empty(&context, render_dimensions.0 * 2,
-      render_dimensions.1).unwrap();
-  let color_attachment = target_texture.to_color_attachment();
-  let depth_buffer = DepthRenderBuffer::new(&context, DepthFormat::I24, render_dimensions.0 * 2,
-      render_dimensions.1).unwrap();
-  let depth_attachment = depth_buffer.to_depth_attachment();
-  let mut framebuffer = SimpleFrameBuffer::with_depth_buffer(&context, color_attachment,
-      depth_attachment).unwrap();
+  let mut canvas = AdaptiveCanvas::new(
+      &context,
+      10,
+      10);
 
-  let left_viewport = Rect {
-      left: 0,
-      bottom: 0,
-      width: render_dimensions.0,
-      height: render_dimensions.1,
-  };
-
-  let right_viewport = Rect {
-      left: render_dimensions.0,
-      bottom: 0,
-      width: render_dimensions.0,
-      height: render_dimensions.1,
-  };
+  canvas.set_resolution(render_dimensions.0, (render_dimensions.1 as f32 * 0.5) as u32);
 
   let render_program = Program::from_source(
       &context,
@@ -345,8 +322,6 @@ fn main() {
   lights[2] = Light { color: [0.0, 0.0, 1.0], position: [-10.0, 10.0, -10.0] };
   lights[2] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
 
-  let fbo_to_screen = Geometry::new_quad(&context, [2.0, 2.0]);
-
   let mut render_params = DrawParameters {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
     .. Default::default()
@@ -391,6 +366,8 @@ fn main() {
 
         let data = d.borrow().data();
 
+        let mut framebuffer = canvas.get_framebuffer(&context).unwrap();
+
         let standing_transform = if let Some(ref stage) = data.stage_parameters {
             math::vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
         } else {
@@ -407,8 +384,8 @@ fn main() {
         let right_view_matrix = math::vec_to_matrix(&data.right_view_matrix);
 
         let eyes = [
-          (&left_viewport, &data.left_projection_matrix, &left_view_matrix),
-          (&right_viewport, &data.right_projection_matrix, &right_view_matrix),
+          (&canvas.viewports[0], &data.left_projection_matrix, &left_view_matrix),
+          (&canvas.viewports[1], &data.right_projection_matrix, &right_view_matrix),
         ];
 
         for eye in &eyes {
@@ -440,26 +417,22 @@ fn main() {
           }
         }
 
-        let layer = VRLayer {
-          texture_id: target_texture.get_id(),
-          ..Default::default()
-        };
+        d.borrow_mut().submit_frame(&canvas.layer);
 
-        d.borrow_mut().submit_frame(&layer);
-
-        // now draw the framebuffer as a texture to the window
+        // now draw the canvas as a texture to the window
 
         let mut target = context.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
+
         let uniforms = uniform! {
             matrix: math::matrix_to_uniform(Matrix4::<f32>::identity()),
-            sampler: &target_texture
+            sampler: &canvas.texture,
         };
 
         target.draw(
-            (&fbo_to_screen.vertices, &fbo_to_screen.texcoords),
-            fbo_to_screen.borrow_indices().unwrap(),
+            (&canvas.rectangle.vertices, &canvas.rectangle.texcoords),
+            canvas.rectangle.borrow_indices().unwrap(),
             &compositor_program,
             &uniforms,
             &Default::default()).unwrap();
