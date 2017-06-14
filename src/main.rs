@@ -145,10 +145,8 @@ fn main() {
 
   let mut canvas = AdaptiveCanvas::new(
       &context,
-      10,
-      10);
-
-  canvas.set_resolution(render_dimensions.0, (render_dimensions.1 as f32 * 0.5) as u32);
+      render_dimensions.0 * 4,
+      render_dimensions.1 * 2);
 
   let render_program = Program::from_source(
       &context,
@@ -417,29 +415,32 @@ fn main() {
           }
         }
 
-        d.borrow_mut().submit_frame(&canvas.layer);
+        //d.borrow_mut().submit_frame(&canvas.layer);
 
         // now draw the canvas as a texture to the window
 
         let mut target = context.draw();
-        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
-
+        target.clear_color_and_depth((1.0, 0.0, 1.0, 1.0), 1.0);
 
         let uniforms = uniform! {
             matrix: math::matrix_to_uniform(Matrix4::<f32>::identity()),
             sampler: &canvas.texture,
         };
 
+        let rectangle = &canvas.rectangle;
+
         target.draw(
-            (&canvas.rectangle.vertices, &canvas.rectangle.texcoords),
-            canvas.rectangle.borrow_indices().unwrap(),
+            (&rectangle.vertices, &rectangle.texcoords),
+            rectangle.borrow_indices().unwrap(),
             &compositor_program,
             &uniforms,
             &Default::default()).unwrap();
 
-        gui.draw(&mut target);
+        //gui.draw(&mut target);
 
         target.finish().unwrap();
+
+        d.borrow_mut().submit_frame(&canvas.layer);
 
         // once every 100 frames, check for VR events
         event_counter += 1;
@@ -532,6 +533,9 @@ fn main() {
               if element_state == ElementState::Pressed {
                 frame_performance.increase_fps();
               }
+            }
+            VirtualKeyCode::PageDown => {
+              canvas.reduce_resolution();
             }
             _ => {},
           }

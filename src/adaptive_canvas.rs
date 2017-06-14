@@ -76,6 +76,15 @@ impl<'a> AdaptiveCanvas {
     }
   }
 
+  pub fn reduce_resolution(&mut self) {
+    let (width, height) = {
+      (((self.viewports[0].width * 2) as f32 * 0.9) as u32,
+      (self.viewports[0].height as f32 * 0.9) as u32)
+    };
+
+    self.set_resolution(width, height);
+  }
+
   pub fn set_resolution(&mut self, width: u32, height: u32) {
     let fraction_width = width as f32 / self.texture.get_width() as f32;
     let fraction_height = height as f32 / self.texture.get_height().unwrap() as f32;
@@ -85,13 +94,13 @@ impl<'a> AdaptiveCanvas {
 
     self.layer.left_bounds = [
         0.0,
-        0.0,
+        1.0 - fraction_height,
         fraction_half_width,
         fraction_height];
 
     self.layer.right_bounds = [
         fraction_half_width,
-        0.0,
+        1.0 - fraction_height,
         fraction_half_width,
         fraction_height];
 
