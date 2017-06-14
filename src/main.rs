@@ -105,7 +105,7 @@ fn main() {
 
       let context = WindowBuilder::new()
         .with_title(format!("Engyn"))
-        .with_depth_buffer(24)
+        //.with_depth_buffer(24)
         .with_dimensions(window_width, window_height)
         .build_glium()
         .unwrap();
@@ -415,12 +415,12 @@ fn main() {
           }
         }
 
-        //d.borrow_mut().submit_frame(&canvas.layer);
+        d.borrow_mut().submit_frame(&canvas.layer);
 
         // now draw the canvas as a texture to the window
 
         let mut target = context.draw();
-        target.clear_color_and_depth((1.0, 0.0, 1.0, 1.0), 1.0);
+        //target.clear_depth(1.0);
 
         let uniforms = uniform! {
             matrix: math::matrix_to_uniform(Matrix4::<f32>::identity()),
@@ -429,18 +429,29 @@ fn main() {
 
         let rectangle = &canvas.rectangle;
 
-        target.draw(
-            (&rectangle.vertices, &rectangle.texcoords),
-            rectangle.borrow_indices().unwrap(),
-            &compositor_program,
-            &uniforms,
-            &Default::default()).unwrap();
+        let src_rect = glium::Rect {
+          left: 0,
+          bottom: 0,
+          width: canvas.viewports[0].width * 2,
+          height: canvas.viewports[0].height,
+        };
+
+
+        let (width, height) = window.get_inner_size_pixels().unwrap();
+
+        let blit_target = glium::BlitTarget {
+          left: 0,
+          bottom: 0,
+          width: width as i32,
+          height: height as i32,
+        };
+
+        framebuffer.blit_color(&src_rect, &target, &blit_target,
+            glium::uniforms::MagnifySamplerFilter::Linear);
 
         //gui.draw(&mut target);
 
         target.finish().unwrap();
-
-        d.borrow_mut().submit_frame(&canvas.layer);
 
         // once every 100 frames, check for VR events
         event_counter += 1;
