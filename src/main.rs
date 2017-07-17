@@ -105,8 +105,7 @@ fn main() {
       let window_height = (render_height as f32 * 0.5) as u32;
 
       let context = WindowBuilder::new()
-        .with_title(format!("Engyn"))
-        //.with_depth_buffer(24)
+        .with_title("Engyn")
         .with_dimensions(window_width, window_height)
         .build_glium()
         .unwrap();
@@ -116,8 +115,7 @@ fn main() {
     None => {
       println!("No VR device detected. Drawing on normal monitor.");
       let context = WindowBuilder::new()
-        .with_title(format!("Engyn"))
-        .with_depth_buffer(24)
+        .with_title("Engyn")
         .with_vsync()
         .with_fullscreen(glium::glutin::get_primary_monitor())
         .build_glium()
@@ -125,13 +123,15 @@ fn main() {
 
       let (width, height) = {
         let window = context.get_window().unwrap();
-        let (width, height) = window.get_inner_size_pixels().unwrap();
-        let origin_x = width as i32 / 2;
-        let origin_y = height as i32 / 2;
+        let (window_width, window_height) = window.get_inner_size_pixels().unwrap();
+        let render_width = (window_width as f32 * 2.0) as u32;
+        let render_height = window_height;
+        let origin_x = window_width as i32 / 2;
+        let origin_y = window_height as i32 / 2;
         window.set_cursor_position(origin_x, origin_y).unwrap();
         window.set_cursor(MouseCursor::NoneCursor);
         window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
-        (width, height)
+        (render_width, render_height)
       };
 
       (false, context, (width, height))
@@ -359,142 +359,129 @@ fn main() {
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
 
-    match displays.get(0) {
-      Some(d) => {
-        d.borrow_mut().sync_poses();
+    let (
+        standing_transform,
+        left_projection_matrix,
+        right_projection_matrix,
+        left_view_matrix,
+        right_view_matrix) = if vr_mode {
+      let display = displays.get(0).unwrap();
+      display.borrow_mut().sync_poses();
+      let display_data = display.borrow().data();
 
-        let data = d.borrow().data();
+      let standing_transform = if let Some(ref stage) = display_data.stage_parameters {
+        math::vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
+      } else {
+        // Stage parameters not available yet or unsupported
+        // Assume 0.75m transform height
+        math::vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
+      };
 
-        let mut framebuffer = canvas.get_framebuffer(&context).unwrap();
+      let frame_data = display.borrow().synced_frame_data(0.1, 1000.0);
 
-        let standing_transform = if let Some(ref stage) = data.stage_parameters {
-            math::vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
-        } else {
-            // Stage parameters not available yet or unsupported
-            // Assume 0.75m transform height
-            math::vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
-        };
+      let left_projection_matrix = math::vec_to_matrix(&frame_data.left_projection_matrix);
+      let right_projection_matrix = math::vec_to_matrix(&frame_data.right_projection_matrix);
+      let left_view_matrix = math::vec_to_matrix(&frame_data.left_view_matrix);
+      let right_view_matrix = math::vec_to_matrix(&frame_data.right_view_matrix);
 
-        framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+      (standing_transform, left_projection_matrix, right_projection_matrix, left_view_matrix,
+          right_view_matrix)
+    } else {
+      let standing_transform = Matrix4::<f32>::identity();
+      let view = fps_camera.get_view(0.016); // TODO: get actual timedelta
 
-        let data = d.borrow().synced_frame_data(0.1, 1000.0);
+      (standing_transform, mono_projection, mono_projection, view, view)
+    };
 
-        let left_view_matrix = math::vec_to_matrix(&data.left_view_matrix);
-        let right_view_matrix = math::vec_to_matrix(&data.right_view_matrix);
+    let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
 
-        let eyes = [
-          (&canvas.viewports[0], &data.left_projection_matrix, &left_view_matrix),
-          (&canvas.viewports[1], &data.right_projection_matrix, &right_view_matrix),
-        ];
+    {
+      let eyes = [
+        (&canvas.viewports[0], &left_projection_matrix, &left_view_matrix),
+        (&canvas.viewports[1], &right_projection_matrix, &right_view_matrix),
+      ];
 
-        for eye in &eyes {
-          let projection = math::matrix_to_uniform(math::vec_to_matrix(eye.1));
-          let view = math::matrix_to_uniform(eye.2 * standing_transform);
-          let viewport = Some(*eye.0);
+      let mut framebuffer = canvas.get_framebuffer(&context).unwrap();
+      framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
-          render_params.viewport = viewport;
-
-          for object in &mut world {
-            object.draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
-          }
-
-          let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
-
-          for (i, ref gamepad) in gamepads.iter().enumerate() {
-            let pose = gamepad.borrow().state().pose;
-            let rotation = match pose.orientation {
-              Some(o) => Matrix4::from(Quaternion::new(o[3], o[0], o[1], o[2])), // WebVR presents quaternions as (x, y, z, w)
-              None => Matrix4::<f32>::identity(),
-            };
-            let position = match pose.position {
-              Some(position) => Matrix4::from_translation(Vector3::from(position)),
-              None => Matrix4::<f32>::identity(),
-            };
-
-            gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-            gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
-          }
-        }
-
-        d.borrow_mut().submit_frame(&canvas.layer);
-
-        // now draw the canvas as a texture to the window
-
-        let mut target = context.draw();
-        //target.clear_depth(1.0);
-
-        let uniforms = uniform! {
-            matrix: math::matrix_to_uniform(Matrix4::<f32>::identity()),
-            sampler: &canvas.texture,
-        };
-
-        let rectangle = &canvas.rectangle;
-
-        let src_rect = glium::Rect {
-          left: 0,
-          bottom: 0,
-          width: canvas.viewports[0].width * 2,
-          height: canvas.viewports[0].height,
-        };
-
-
-        let (width, height) = window.get_inner_size_pixels().unwrap();
-
-        let blit_target = glium::BlitTarget {
-          left: 0,
-          bottom: 0,
-          width: width as i32,
-          height: height as i32,
-        };
-
-        framebuffer.blit_color(&src_rect, &target, &blit_target,
-            glium::uniforms::MagnifySamplerFilter::Linear);
-
-        //gui.draw(&mut target);
-
-        target.finish().unwrap();
-
-        // once every 100 frames, check for VR events
-        event_counter += 1;
-        if event_counter % 100 == 0 {
-          for event in vr.poll_events() {
-            match event {
-              VREvent::Display(VRDisplayEvent::Connect(data)) => {
-                println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
-              },
-              VREvent::Display(VRDisplayEvent::Disconnect(display_id)) => {
-                println!("VR display {}: Disconnected.", display_id);
-              },
-              VREvent::Display(VRDisplayEvent::Activate(data, _)) => {
-                println!("VR display {}: Activated.", data.display_id);
-              },
-              VREvent::Display(VRDisplayEvent::Deactivate(data, _)) => {
-                println!("VR display {}: Deactivated.", data.display_id);
-              },
-              _ => println!("VR event: {:?}", event),
-            }
-          }
-        }
-      },
-      None => {
-        // draw the scene normally
-        let mut target = context.draw();
-        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
-
-        let projection = math::matrix_to_uniform(mono_projection);
-        // TODO: get actual timedelta
-        let view = math::matrix_to_uniform(fps_camera.get_view(0.016));
-        let viewport = None;
+      for eye in &eyes {
+        let projection = math::matrix_to_uniform(*eye.1);
+        let view = math::matrix_to_uniform(eye.2 * standing_transform);
+        let viewport = Some(*eye.0);
 
         render_params.viewport = viewport;
 
         for object in &mut world {
-          object.draw(&mut target, projection, view, &render_program, &render_params, num_lights, lights);
+          object.draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
         }
 
-        gui.draw(&mut target);
+        for (i, ref gamepad) in gamepads.iter().enumerate() {
+          let pose = gamepad.borrow().state().pose;
+          let rotation = match pose.orientation {
+            Some(o) => Matrix4::from(Quaternion::new(o[3], o[0], o[1], o[2])), // WebVR presents quaternions as (x, y, z, w)
+            None => Matrix4::<f32>::identity(),
+          };
+          let position = match pose.position {
+            Some(position) => Matrix4::from_translation(Vector3::from(position)),
+            None => Matrix4::<f32>::identity(),
+          };
 
-        target.finish().unwrap();
+          gamepad_models[i].transform = inverse_standing_transform * position * rotation;
+          gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+        }
+      }
+
+      if vr_mode {
+        let display = displays.get(0).unwrap();
+        display.borrow_mut().submit_frame(&canvas.layer);
+      }
+
+      // now draw the canvas as a texture to the window
+
+      let mut target = context.draw();
+
+      let src_rect = glium::Rect {
+        left: 0,
+        bottom: 0,
+        width: canvas.viewports[0].width * 2,
+        height: canvas.viewports[0].height,
+      };
+
+      let (width, height) = window.get_inner_size_pixels().unwrap();
+
+      let blit_target = glium::BlitTarget {
+        left: 0,
+        bottom: 0,
+        width: width as i32,
+        height: height as i32,
+      };
+
+      framebuffer.blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
+
+      gui.draw(&mut target);
+
+      target.finish().unwrap();
+    }
+
+    // once every 100 frames, check for VR events
+    event_counter += 1;
+    if event_counter % 100 == 0 {
+      for event in vr.poll_events() {
+        match event {
+          VREvent::Display(VRDisplayEvent::Connect(data)) => {
+            println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
+          },
+          VREvent::Display(VRDisplayEvent::Disconnect(display_id)) => {
+            println!("VR display {}: Disconnected.", display_id);
+          },
+          VREvent::Display(VRDisplayEvent::Activate(data, _)) => {
+            println!("VR display {}: Activated.", data.display_id);
+          },
+          VREvent::Display(VRDisplayEvent::Deactivate(data, _)) => {
+            println!("VR display {}: Deactivated.", data.display_id);
+          },
+          _ => println!("VR event: {:?}", event),
+        }
       }
     }
 
