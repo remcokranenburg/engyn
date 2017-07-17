@@ -231,33 +231,6 @@ fn main() {
       "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
       None).unwrap();
 
-  let compositor_program = Program::from_source(
-      &context,
-      &r#"
-        #version 140
-        uniform mat4 matrix;
-        in vec3 position;
-        in vec2 texcoord;
-        out vec2 v_texcoord;
-        void main() {
-          v_texcoord = texcoord;
-          gl_Position = matrix * vec4(position, 1.0);
-        }
-      "#,
-      &r#"
-        #version 140
-
-        uniform sampler2D sampler;
-
-        in vec2 v_texcoord;
-        out vec4 color;
-
-        void main() {
-          color = texture(sampler, v_texcoord);
-        }
-      "#,
-      None).unwrap();
-
   let mut world = Vec::new();
 
   // a triangle
