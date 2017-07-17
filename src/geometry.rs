@@ -108,7 +108,7 @@ impl Geometry {
     }
   }
 
-  pub fn new_quad(context: &GlutinFacade, size: [f32; 2]) -> Geometry {
+  pub fn new_quad(context: &GlutinFacade, size: [f32; 2], dynamic_texcoords: bool) -> Geometry {
     let width_half = size[0] * 0.5;
     let height_half = size[1] * 0.5;
 
@@ -127,11 +127,20 @@ impl Geometry {
           Vertex { position: (-width_half,  height_half, 0.0) },
           Vertex { position: ( width_half,  height_half, 0.0) },
           Vertex { position: ( width_half, -height_half, 0.0) }]).unwrap(),
-      texcoords: VertexBuffer::new(context, &[
-          Texcoord { texcoord: (0.0, 0.0) },
-          Texcoord { texcoord: (0.0, 1.0) },
-          Texcoord { texcoord: (1.0, 1.0) },
-          Texcoord { texcoord: (1.0, 0.0) }]).unwrap(),
+      texcoords:
+          if dynamic_texcoords {
+            VertexBuffer::dynamic(context, &[
+                Texcoord { texcoord: (0.0, 0.0) },
+                Texcoord { texcoord: (0.0, 1.0) },
+                Texcoord { texcoord: (1.0, 1.0) },
+                Texcoord { texcoord: (1.0, 0.0) }]).unwrap()
+          } else {
+            VertexBuffer::new(context, &[
+                Texcoord { texcoord: (0.0, 0.0) },
+                Texcoord { texcoord: (0.0, 1.0) },
+                Texcoord { texcoord: (1.0, 1.0) },
+                Texcoord { texcoord: (1.0, 0.0) }]).unwrap()
+          },
     }
   }
 

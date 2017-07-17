@@ -50,7 +50,7 @@ impl<'a> Object<'a> {
 
     Object {
       mesh: Some(Mesh {
-        geometry: Geometry::new_quad(context, size),
+        geometry: Geometry::new_quad(context, size, false),
         material: Material { albedo_map: tex, metalness: 0.0, reflectivity: 0.0 },
       }),
       transform: matrix,
