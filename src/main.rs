@@ -139,7 +139,6 @@ fn main() {
   };
 
   println!("Loading textures...");
-  let empty_tex = load_texture(&context, "data/empty.bmp");
   let marble_tex = load_texture(&context, "data/marble.jpg");
   let terrain_tex = load_texture(&context, "data/terrain.png");
   println!("Textures loaded!");
@@ -307,10 +306,6 @@ fn main() {
   };
 
   world.push(my_teapot);
-
-  // empty texture to force glutin clean
-  world.push(Object::new_plane(&context, &empty_tex, [0.0001,0.0001], [-0.1, 0.1, 0.0],
-      [0.0, 0.0, 0.0], [-1.0,1.0,1.0]));
 
   // add a light
 
