@@ -61,6 +61,7 @@ use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
 use glium::texture::RawImage2d;
 use glium::texture::SrgbTexture2d;
+use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
 use std::path::Path;
 use std::f32;
@@ -544,9 +545,16 @@ fn main() {
               if element_state == ElementState::Pressed {
                 frame_performance.increase_fps();
               }
-            }
+            },
             VirtualKeyCode::PageDown => {
-              canvas.reduce_resolution();
+              if element_state == ElementState::Pressed {
+                canvas.decrease_resolution();
+              }
+            },
+            VirtualKeyCode::PageUp => {
+              if element_state == ElementState::Pressed {
+                canvas.increase_resolution();
+              }
             }
             _ => {},
           }

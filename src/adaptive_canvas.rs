@@ -38,6 +38,10 @@ pub struct AdaptiveCanvas {
   pub viewports: [Rect; 2],
 
   depth_buffer: DepthRenderBuffer,
+  max_width: u32,
+  max_height: u32,
+  step_width: u32,
+  step_height: u32,
 }
 
 impl<'a> AdaptiveCanvas {
@@ -73,16 +77,35 @@ impl<'a> AdaptiveCanvas {
             height: max_height,
           }],
       depth_buffer: depth_buffer,
+      max_width: max_width,
+      max_height: max_height,
+      step_width: (max_width as f32 * 0.05) as u32,
+      step_height: (max_height as f32 * 0.05) as u32,
     }
   }
 
-  pub fn reduce_resolution(&mut self) {
-    let (width, height) = {
-      (((self.viewports[0].width * 2) as f32 * 0.9) as u32,
-      (self.viewports[0].height as f32 * 0.9) as u32)
-    };
+  pub fn decrease_resolution(&mut self) {
+    let width = self.viewports[0].width * 2 - self.step_width;
+    let height = self.viewports[0].height - self.step_height;
 
-    self.set_resolution(width, height);
+    if width >= self.step_width && height >= self.step_height {
+      println!("Decreasing resolution.");
+      self.set_resolution(width, height);
+    } else {
+      println!("Already at lowest resolution.");
+    }
+  }
+
+  pub fn increase_resolution(&mut self) {
+    let width = self.viewports[0].width * 2 + self.step_width;
+    let height = self.viewports[0].height + self.step_height;
+
+    if width <= self.max_width && height <= self.max_height {
+      println!("Increasing resolution.");
+      self.set_resolution(width, height);
+    } else {
+      println!("Already at highest resolution.");
+    }
   }
 
   pub fn set_resolution(&mut self, width: u32, height: u32) {
