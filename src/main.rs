@@ -124,7 +124,7 @@ fn main() {
       let (width, height) = {
         let window = context.get_window().unwrap();
         let (window_width, window_height) = window.get_inner_size_pixels().unwrap();
-        let render_width = (window_width as f32 * 2.0) as u32;
+        let render_width = (window_width as f32 * 0.5) as u32;
         let render_height = window_height;
         let origin_x = window_width as i32 / 2;
         let origin_y = window_height as i32 / 2;
@@ -529,7 +529,7 @@ fn main() {
           }
         },
         Event::Resized(width, height) => {
-          render_dimensions = (width, height);
+          render_dimensions = ((width as f64 * 0.5) as u32, height);
           println!("resized to {}x{}", width, height);
         }
         _ => {}
