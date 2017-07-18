@@ -375,9 +375,9 @@ fn main() {
       for eye in &eyes {
         let projection = math::matrix_to_uniform(*eye.1);
         let view = math::matrix_to_uniform(eye.2 * standing_transform);
-        let viewport = Some(*eye.0);
+        let viewport = *eye.0;
 
-        render_params.viewport = viewport;
+        render_params.viewport = Some(viewport);
 
         for object in &mut world {
           object.draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
@@ -397,6 +397,8 @@ fn main() {
           gamepad_models[i].transform = inverse_standing_transform * position * rotation;
           gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
         }
+
+        gui.draw(&mut framebuffer, viewport);
       }
 
       if vr_mode {
@@ -425,8 +427,6 @@ fn main() {
       };
 
       framebuffer.blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
-
-      gui.draw(&mut target);
 
       target.finish().unwrap();
     }
@@ -461,12 +461,17 @@ fn main() {
       }
 
       match event {
-        Event::Closed | Event::KeyboardInput(_, _, Some(VirtualKeyCode::Escape)) => {
+        Event::Closed | Event::KeyboardInput(_, _, Some(VirtualKeyCode::Q)) => {
           println!("Exiting...");
           return;
         },
         Event::KeyboardInput(element_state, _, Some(key_code)) => {
           match key_code {
+            VirtualKeyCode::Escape => {
+              if element_state == ElementState::Pressed {
+                gui.is_visible = !gui.is_visible;
+              }
+            },
             VirtualKeyCode::Up | VirtualKeyCode::W => {
               match element_state {
                 ElementState::Pressed => fps_camera.forward = true,
