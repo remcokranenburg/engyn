@@ -108,6 +108,18 @@ impl<'a> AdaptiveCanvas {
     }
   }
 
+  pub fn set_resolution_scale(&mut self, scale: u32) {
+    let width = scale * self.step_width;
+    let height = scale * self.step_height;
+
+    if width <= self.max_width && height <= self.max_height {
+      println!("Setting resolution {}x{}.", width, height);
+      self.set_resolution(width, height);
+    } else {
+      println!("Can't set resolution {}x{}: too high", width, height);
+    }
+  }
+
   pub fn set_resolution(&mut self, width: u32, height: u32) {
     let fraction_width = width as f32 / self.texture.get_width() as f32;
     let fraction_height = height as f32 / self.texture.get_height().unwrap() as f32;

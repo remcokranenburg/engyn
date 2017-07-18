@@ -74,6 +74,7 @@ use camera::FpsCamera;
 use light::Light;
 use geometry::Geometry;
 use geometry::Texcoord;
+use gui::Action;
 use gui::Gui;
 use material::Material;
 use mesh::Mesh;
@@ -326,6 +327,7 @@ fn main() {
 
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
+    let mut action = Action::None;
 
     let (
         standing_transform,
@@ -398,7 +400,10 @@ fn main() {
           gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
         }
 
-        gui.draw(&mut framebuffer, viewport);
+        // first action goes through
+        // TODO: split Gui.draw so you draw once to framebuffer and then blit the framebuffer twice
+        let tmp_action = gui.draw(&mut framebuffer, viewport);
+        action = match action { Action::None => tmp_action, _ => action };
       }
 
       if vr_mode {
@@ -408,7 +413,7 @@ fn main() {
 
       // now draw the canvas as a texture to the window
 
-      let mut target = context.draw();
+      let target = context.draw();
 
       let src_rect = glium::Rect {
         left: 0,
@@ -429,6 +434,15 @@ fn main() {
       framebuffer.blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
 
       target.finish().unwrap();
+    }
+
+    match action {
+      Action::ChangeResolution(scale) => canvas.set_resolution_scale(scale),
+      Action::Quit => {
+        println!("Exiting...");
+        return;
+      },
+      Action::None => {},
     }
 
     // once every 100 frames, check for VR events
@@ -461,66 +475,51 @@ fn main() {
       }
 
       match event {
-        Event::Closed | Event::KeyboardInput(_, _, Some(VirtualKeyCode::Q)) => {
+        Event::Closed => {
           println!("Exiting...");
           return;
         },
+        Event::KeyboardInput(_, _, Some(VirtualKeyCode::Q)) => {
+          if gui.is_visible {
+            println!("Exiting...");
+            return;
+          }
+        },
         Event::KeyboardInput(element_state, _, Some(key_code)) => {
+          let key_is_pressed = element_state == ElementState::Pressed;
+
           match key_code {
-            VirtualKeyCode::Escape => {
-              if element_state == ElementState::Pressed {
-                gui.is_visible = !gui.is_visible;
+            // call when key is pressed
+            VirtualKeyCode::Escape    => if key_is_pressed {
+              gui.is_visible = !gui.is_visible;
+
+              if gui.is_visible {
+                window.set_cursor(MouseCursor::Default);
+                window.set_cursor_state(CursorState::Normal)
+                    .ok()
+                    .expect("Could not ungrab mouse cursor");
+              } else {
+                window.set_cursor(MouseCursor::NoneCursor);
+                window.set_cursor_state(CursorState::Grab)
+                    .ok()
+                    .expect("Could not grab mouse cursor");
               }
             },
-            VirtualKeyCode::Up | VirtualKeyCode::W => {
-              match element_state {
-                ElementState::Pressed => fps_camera.forward = true,
-                ElementState::Released => fps_camera.forward = false,
-              };
-            },
-            VirtualKeyCode::Down | VirtualKeyCode::S => {
-              match element_state {
-                ElementState::Pressed => fps_camera.backward = true,
-                ElementState::Released => fps_camera.backward = false,
-              };
-            },
-            VirtualKeyCode::Left | VirtualKeyCode::A => {
-              match element_state {
-                ElementState::Pressed => fps_camera.left = true,
-                ElementState::Released => fps_camera.left = false,
-              };
-            },
-            VirtualKeyCode::Right | VirtualKeyCode::D => {
-              match element_state {
-                ElementState::Pressed => fps_camera.right = true,
-                ElementState::Released => fps_camera.right = false,
-              };
-            },
-            VirtualKeyCode::Equals => {
-              if element_state == ElementState::Pressed {
-                frame_performance.reduce_fps();
-              };
-            },
-            VirtualKeyCode::Minus => {
-              if element_state == ElementState::Pressed {
-                frame_performance.increase_fps();
-              }
-            },
-            VirtualKeyCode::PageDown => {
-              if element_state == ElementState::Pressed {
-                canvas.decrease_resolution();
-              }
-            },
-            VirtualKeyCode::PageUp => {
-              if element_state == ElementState::Pressed {
-                canvas.increase_resolution();
-              }
-            }
+            VirtualKeyCode::Equals    => if key_is_pressed { frame_performance.reduce_fps() },
+            VirtualKeyCode::Minus     => if key_is_pressed { frame_performance.increase_fps() },
+            VirtualKeyCode::PageDown  => if key_is_pressed { canvas.decrease_resolution() },
+            VirtualKeyCode::PageUp    => if key_is_pressed { canvas.increase_resolution() },
+
+            // activate while key is pressed
+            VirtualKeyCode::W => fps_camera.forward = key_is_pressed,
+            VirtualKeyCode::S => fps_camera.backward = key_is_pressed,
+            VirtualKeyCode::A => fps_camera.left = key_is_pressed,
+            VirtualKeyCode::D => fps_camera.right = key_is_pressed,
             _ => {},
           }
         },
         Event::MouseMoved(x, y) => {
-          if !vr_mode {
+          if !vr_mode && !gui.is_visible {
             let (width, height) = window.get_inner_size_pixels().unwrap();
             let origin_x = width as i32 / 2;
             let origin_y = height as i32 / 2;
@@ -541,6 +540,6 @@ fn main() {
       };
     }
 
-    frame_performance.process_frame_end();
+    frame_performance.process_frame_end(vr_mode);
   }
 }

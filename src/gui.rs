@@ -18,20 +18,25 @@
 
 use conrod::backend::glium::Renderer;
 use conrod::color;
-use conrod::Colorable;
 use conrod::event::Input;
 use conrod::image::Map;
+use conrod::Labelable;
 use conrod::position::Align;
 use conrod::position::Direction;
 use conrod::position::Padding;
 use conrod::position::Position;
+use conrod::position::range::Range;
 use conrod::position::Relative;
 use conrod::Positionable;
+use conrod::Sizeable;
 use conrod::Theme;
 use conrod::theme::StyleMap;
 use conrod::Ui;
 use conrod::UiBuilder;
 use conrod::Widget;
+use conrod::widget::Button;
+use conrod::widget::Canvas;
+use conrod::widget::Slider;
 use conrod::widget::Text;
 use glium::backend::glutin_backend::GlutinFacade;
 use glium::BlitTarget;
@@ -45,8 +50,19 @@ use adaptive_canvas::AdaptiveCanvas;
 
 widget_ids! {
   pub struct Ids {
+    container,
     title_text,
+    help_text,
+    resume_button,
+    resolution_slider,
+    quit_button,
   }
+}
+
+pub enum Action {
+  ChangeResolution(u32),
+  Quit,
+  None,
 }
 
 pub struct Gui<'a> {
@@ -58,24 +74,26 @@ pub struct Gui<'a> {
   image_map: Map<Texture2d>,
   renderer: Renderer,
   ui: Ui,
+
+  resolution_scale: u32,
 }
 
 impl<'a> Gui<'a> {
   pub fn new(context: &'a GlutinFacade, width: f64, height: f64) -> Gui {
     let theme = Theme {
       name: "Engyn Default Theme".to_string(),
-      padding: Padding::none(),
+      padding: Padding { x: Range::new(50.0, 50.0), y: Range::new(50.0, 50.0) },
       x_position: Position::Relative(Relative::Align(Align::Start), None),
-      y_position: Position::Relative(Relative::Direction(Direction::Backwards, 20.0), None),
+      y_position: Position::Relative(Relative::Direction(Direction::Backwards, 50.0), None),
       background_color: color::DARK_CHARCOAL,
       shape_color: color::LIGHT_CHARCOAL,
       border_color: color::BLACK,
       border_width: 0.0,
       label_color: color::WHITE,
       font_id: None,
-      font_size_large: 26,
-      font_size_medium: 18,
-      font_size_small: 12,
+      font_size_large: 200,
+      font_size_medium: 75,
+      font_size_small: 50,
       widget_styling: StyleMap::default(),
       mouse_drag_threshold: 0.0,
       double_click_threshold: Duration::from_millis(500),
@@ -93,21 +111,62 @@ impl<'a> Gui<'a> {
       image_map: Map::<Texture2d>::new(),
       renderer: Renderer::new(context).unwrap(),
       ui: ui,
+      resolution_scale: 10,
     }
   }
 
-  pub fn draw<S>(&mut self, target: &mut S, viewport: Rect) where S: Surface {
-    if !self.is_visible { return }
+  pub fn draw<S>(&mut self, target: &mut S, viewport: Rect) -> Action where S: Surface {
+    let mut action = Action::None;
+
+    if !self.is_visible { return action; }
 
     {
       let ui = &mut self.ui.set_widgets();
 
+      Canvas::new()
+          .scroll_kids()
+          .set(self.ids.container, ui);
+
       // "Hello World!" in the middle of the screen.
-      Text::new("Hello, world!")
-        .middle_of(ui.window)
-        .color(color::BLACK)
-        .font_size(200)
-        .set(self.ids.title_text, ui);
+      Text::new("Welcome to Engyn")
+          .parent(self.ids.container)
+          .mid_top_of(self.ids.container)
+          .font_size(150)
+          .set(self.ids.title_text, ui);
+
+      Text::new("Press Escape to bring up this menu and use arrow keys to navigate.")
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 50.0)
+          .wrap_by_word()
+          .set(self.ids.help_text, ui);
+
+      if Button::new()
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 50.0)
+          .label("Resume [Escape]")
+          .set(self.ids.resume_button, ui)
+          .was_clicked() {
+        self.is_visible = false;
+      }
+
+      if let Some(scale) = Slider::new(self.resolution_scale as f64, 1.0, 20.0)
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 50.0)
+          .label(&format!("Resolution: {}", self.resolution_scale))
+          .small_font(ui)
+          .set(self.ids.resolution_slider, ui) {
+        self.resolution_scale = scale as u32;
+        action = Action::ChangeResolution(scale as u32);
+      }
+
+      if Button::new()
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 50.0)
+          .label("Quit [Q]")
+          .set(self.ids.quit_button, ui)
+          .was_clicked() {
+        action = Action::Quit;
+      }
     }
 
     // Render the `Ui` and then display it on the screen.
@@ -116,7 +175,7 @@ impl<'a> Gui<'a> {
 
     let mut framebuffer = self.canvas.get_framebuffer(self.context).unwrap();
 
-    framebuffer.clear_color_and_depth((0.4, 0.35, 0.35, 1.0), 1.0);
+    framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
     {
       self.renderer.draw(self.context, &mut framebuffer, &self.image_map).unwrap();
@@ -137,6 +196,8 @@ impl<'a> Gui<'a> {
     };
 
     framebuffer.blit_color(&src_rect, target, &blit_target, MagnifySamplerFilter::Linear);
+
+    action
   }
 
   pub fn handle_event(&mut self, event: Input) {

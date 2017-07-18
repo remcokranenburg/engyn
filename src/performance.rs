@@ -70,7 +70,7 @@ impl FramePerformance {
       self.time_frame_start = Instant::now();
   }
 
-  pub fn process_frame_end(&mut self) {
+  pub fn process_frame_end(&mut self, vr_mode: bool) {
     let sum_frame_time = self.time_frame_start.duration_since(self.time_last_update);
     let current_frame_time = Instant::now().duration_since(self.time_frame_start);
 
@@ -78,10 +78,11 @@ impl FramePerformance {
       let sum_frame_time_as_millis = duration_as_millis(sum_frame_time);
       let fps = self.frame_count as f64 / (sum_frame_time_as_millis / 1000f64);
       let frame_time = sum_frame_time_as_millis / self.frame_count as f64;
+      let target_num_frames = if vr_mode { 90 } else { 60 };
       println!("Avg FPS: {} ({}ms), dropped {} frames, Avg drawing time: {}ms",
           fps,
           frame_time,
-          90 - self.frame_count,
+          target_num_frames - self.frame_count,
           duration_as_millis(current_frame_time));
       self.frame_count = 0;
       self.time_last_update = self.time_frame_start;
