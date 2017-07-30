@@ -23,7 +23,7 @@ use cgmath::Vector3;
 use glium::Program;
 use glium::Surface;
 use glium::DrawParameters;
-use glium::backend::glutin_backend::GlutinFacade;
+use glium::backend::Facade;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
 use glium::texture::SrgbTexture2d;
@@ -41,7 +41,7 @@ pub struct Object<'a> {
 }
 
 impl<'a> Object<'a> {
-  pub fn new_plane(context: &GlutinFacade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
+  pub fn new_plane(context: &Facade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
       rot: [f32;3], scale: [f32;3]) -> Object<'a> {
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
     let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
@@ -57,7 +57,7 @@ impl<'a> Object<'a> {
     }
   }
 
-  pub fn new_triangle(context: &GlutinFacade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
+  pub fn new_triangle(context: &Facade, tex: &'a SrgbTexture2d, size: [f32;2], pos: [f32;3],
       rot: [f32;3], scale: [f32;3]) -> Object<'a> {
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
     let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);

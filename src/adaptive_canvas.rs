@@ -18,7 +18,7 @@
 
 use glium::Rect;
 use glium::GlObject;
-use glium::backend::glutin_backend::GlutinFacade;
+use glium::backend::Facade;
 use glium::framebuffer::DepthRenderBuffer;
 use glium::framebuffer::SimpleFrameBuffer;
 use glium::framebuffer::ToColorAttachment;
@@ -45,23 +45,22 @@ pub struct AdaptiveCanvas {
 }
 
 impl<'a> AdaptiveCanvas {
-  pub fn new(context: &GlutinFacade, max_width: u32, max_height: u32) -> AdaptiveCanvas {
-    let max_half_width = (max_width as f32 * 0.5) as u32;
-
+  pub fn new(display: &Facade, max_width: u32, max_height: u32) -> AdaptiveCanvas {
+    let max_half_width = max_width / 2;
     let texture = Texture2d::empty(
-        context,
+        display,
         max_width,
         max_height).unwrap();
 
     let depth_buffer = DepthRenderBuffer::new(
-        context,
+        display,
         DepthFormat::I24,
         max_width,
         max_height).unwrap();
 
     AdaptiveCanvas {
       layer: VRLayer { texture_id: texture.get_id(), ..Default::default() },
-      rectangle: Geometry::new_quad(&context, [2.0, 2.0], true),
+      rectangle: Geometry::new_quad(display, [2.0, 2.0], true),
       texture: texture,
       viewports: [
           Rect {
@@ -153,10 +152,10 @@ impl<'a> AdaptiveCanvas {
     self.viewports[1].height = height;
   }
 
-  pub fn get_framebuffer(&self, context: &GlutinFacade)
+  pub fn get_framebuffer(&self, display: &Facade)
       -> Result<SimpleFrameBuffer, ValidationError> {
     SimpleFrameBuffer::with_depth_buffer(
-        context,
+        display,
         self.texture.to_color_attachment(),
         self.depth_buffer.to_depth_attachment())
   }

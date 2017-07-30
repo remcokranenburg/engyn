@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use glium::backend::glutin_backend::GlutinFacade;
+use glium::backend::Facade;
 use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
 use glium::vertex::VertexBuffer;
@@ -52,7 +52,7 @@ pub struct Geometry {
 }
 
 impl Geometry {
-  pub fn from_obj(context: &GlutinFacade, filename: &str) -> Geometry {
+  pub fn from_obj(context: &Facade, filename: &str) -> Geometry {
     let (models, _) = tobj::load_obj(&Path::new(filename)).unwrap();
 
     assert!(models.len() > 0);
@@ -108,7 +108,7 @@ impl Geometry {
     }
   }
 
-  pub fn new_quad(context: &GlutinFacade, size: [f32; 2], dynamic_texcoords: bool) -> Geometry {
+  pub fn new_quad(context: &Facade, size: [f32; 2], dynamic_texcoords: bool) -> Geometry {
     let width_half = size[0] * 0.5;
     let height_half = size[1] * 0.5;
 
@@ -144,7 +144,7 @@ impl Geometry {
     }
   }
 
-  pub fn new_triangle(context: &GlutinFacade, size: [f32; 2]) -> Geometry {
+  pub fn new_triangle(context: &Facade, size: [f32; 2]) -> Geometry {
     let width_half = size[0] * 0.5;
     let height_half = size[1] * 0.5;
 

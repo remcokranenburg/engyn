@@ -46,13 +46,17 @@ use cgmath::Transform;
 use cgmath::Vector3;
 use glium::Depth;
 use glium::DepthTest;
-use glium::DisplayBuild;
+use glium::Display;
 use glium::DrawParameters;
 use glium::Program;
 use glium::Surface;
-use glium::backend::glutin_backend::GlutinFacade;
+use glium::backend::Facade;
 use glium::glutin::Event;
+use glium::glutin::EventsLoop;
+use glium::glutin::WindowEvent;
+use glium::glutin::KeyboardInput;
 use glium::glutin::MouseCursor;
+use glium::glutin::ContextBuilder;
 use glium::glutin::CursorState;
 use glium::glutin::ElementState;
 use glium::glutin::VirtualKeyCode;
@@ -81,10 +85,10 @@ use mesh::Mesh;
 use object::Object;
 use performance::FramePerformance;
 
-fn load_texture(context: &GlutinFacade, name: &str) -> SrgbTexture2d {
+fn load_texture(context: &Facade, name: &str) -> SrgbTexture2d {
   let image = image::open(&Path::new(&name)).unwrap().to_rgba();
   let image_dimensions = image.dimensions();
-  let image = RawImage2d::from_raw_rgba_reversed(image.into_raw(), image_dimensions);
+  let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
   SrgbTexture2d::new(context, image).unwrap()
 }
 
@@ -93,64 +97,52 @@ fn main() {
   vr.register_defaults();
   vr.initialize_services();
 
-  let displays = vr.get_displays();
+  let vr_displays = vr.get_displays();
+  let vr_display = vr_displays.get(0);
+  let vr_mode = vr_display != None;
 
-  let (vr_mode, context, mut render_dimensions) = match displays.get(0) {
+  let mut events_loop = EventsLoop::new();
+  let window_builder = WindowBuilder::new()
+    .with_title("Engyn")
+    .with_dimensions(1620, 900); // TODO calculate optimal dimensions from monitor and vr display
+
+  let context_builder = ContextBuilder::new()
+    .with_vsync(!vr_mode);
+
+  let display = Display::new(window_builder, context_builder, &events_loop).unwrap();
+  let window = display.gl_window();
+
+  let mut render_dimensions = match vr_display {
     Some(d) => {
-      let data = d.borrow().data();
-      println!("VR display 0: {}", data.display_name);
-
-      let render_width = data.left_eye_parameters.render_width;
-      let render_height = data.left_eye_parameters.render_height;
-      let window_width = render_width;
-      let window_height = (render_height as f32 * 0.5) as u32;
-
-      let context = WindowBuilder::new()
-        .with_title("Engyn")
-        .with_dimensions(window_width, window_height)
-        .build_glium()
-        .unwrap();
-
-      (true, context, (render_width, render_height))
+      let params = d.borrow().data().left_eye_parameters;
+      (params.render_width, params.render_height)
     },
     None => {
-      println!("No VR device detected. Drawing on normal monitor.");
-      let context = WindowBuilder::new()
-        .with_title("Engyn")
-        .with_vsync()
-        .with_fullscreen(glium::glutin::get_primary_monitor())
-        .build_glium()
-        .unwrap();
-
-      let (width, height) = {
-        let window = context.get_window().unwrap();
-        let (window_width, window_height) = window.get_inner_size_pixels().unwrap();
-        let render_width = (window_width as f32 * 0.5) as u32;
-        let render_height = window_height;
-        let origin_x = window_width as i32 / 2;
-        let origin_y = window_height as i32 / 2;
-        window.set_cursor_position(origin_x, origin_y).unwrap();
-        window.set_cursor(MouseCursor::NoneCursor);
-        window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
-        (render_width, render_height)
-      };
-
-      (false, context, (width, height))
+      let dimensions = window.get_inner_size_pixels().unwrap();
+      (dimensions.0 / 2, dimensions.1)
     },
   };
 
+  if !vr_mode {
+    let origin_x = render_dimensions.0 as i32;
+    let origin_y = (render_dimensions.1 / 2) as i32;
+    window.set_cursor_position(origin_x, origin_y).unwrap();
+    window.set_cursor(MouseCursor::NoneCursor);
+    window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
+  }
+
   println!("Loading textures...");
-  let marble_tex = load_texture(&context, "data/marble.jpg");
-  let terrain_tex = load_texture(&context, "data/terrain.png");
+  let marble_tex = load_texture(&display, "data/marble.jpg");
+  let terrain_tex = load_texture(&display, "data/terrain.png");
   println!("Textures loaded!");
 
   let mut canvas = AdaptiveCanvas::new(
-      &context,
+      &display,
       render_dimensions.0 * 4,
       render_dimensions.1 * 2);
 
   let render_program = Program::from_source(
-      &context,
+      &display,
       &r#"
         #version 140
 
@@ -235,13 +227,13 @@ fn main() {
   let mut world = Vec::new();
 
   // a triangle
-  world.push(Object::new_triangle(&context, &marble_tex, [1.0, 1.0], [0.0, 0.0, 0.0],
+  world.push(Object::new_triangle(&display, &marble_tex, [1.0, 1.0], [0.0, 0.0, 0.0],
       [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
 
   // a terrain mesh
   world.push(Object {
     mesh: Some(Mesh {
-      geometry: Geometry::from_obj(&context, "data/terrain.obj"),
+      geometry: Geometry::from_obj(&display, "data/terrain.obj"),
       material: Material { albedo_map: &terrain_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
     transform: Matrix4::<f32>::identity(),
@@ -263,12 +255,12 @@ fn main() {
     mesh: Some(Mesh {
       geometry: Geometry {
         indices: Some(IndexBuffer::new(
-            &context,
+            &display,
             PrimitiveType::TrianglesList,
             &teapot::INDICES).unwrap()),
-        normals: VertexBuffer::new(&context, &teapot::NORMALS).unwrap(),
-        vertices: VertexBuffer::new(&context, &teapot::VERTICES).unwrap(),
-        texcoords: VertexBuffer::new(&context, &my_teapot_texcoords).unwrap(),
+        normals: VertexBuffer::new(&display, &teapot::NORMALS).unwrap(),
+        vertices: VertexBuffer::new(&display, &teapot::VERTICES).unwrap(),
+        texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
       },
       material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
     }),
@@ -299,8 +291,6 @@ fn main() {
 
   let mut fps_camera = FpsCamera::new(Vector3::new(0.0, 1.8, 3.0));
 
-  let window = context.get_window().unwrap();
-
   // create a model for each gamepad
   let gamepads = vr.get_gamepads();
   let mut gamepad_models = Vec::new();
@@ -311,14 +301,14 @@ fn main() {
     println!("We've found a gamepad!");
     gamepad_models.push(Object {
       mesh: Some(Mesh {
-        geometry: Geometry::from_obj(&context, "data/vive-controller.obj"),
+        geometry: Geometry::from_obj(&display, "data/vive-controller.obj"),
         material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
       }),
       transform: Matrix4::<f32>::identity(),
     });
   }
 
-  let mut gui = Gui::new(&context, render_dimensions.0 as f64, render_dimensions.1 as f64);
+  let mut gui = Gui::new(&display, render_dimensions.0 as f64, render_dimensions.1 as f64);
 
   let mut frame_performance = FramePerformance::new();
 
@@ -335,9 +325,8 @@ fn main() {
         right_projection_matrix,
         left_view_matrix,
         right_view_matrix) = if vr_mode {
-      let display = displays.get(0).unwrap();
-      display.borrow_mut().sync_poses();
-      let display_data = display.borrow().data();
+      vr_display.unwrap().borrow_mut().sync_poses();
+      let display_data = vr_display.unwrap().borrow().data();
 
       let standing_transform = if let Some(ref stage) = display_data.stage_parameters {
         math::vec_to_matrix(&stage.sitting_to_standing_transform).inverse_transform().unwrap()
@@ -347,7 +336,7 @@ fn main() {
         math::vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
       };
 
-      let frame_data = display.borrow().synced_frame_data(0.1, 1000.0);
+      let frame_data = vr_display.unwrap().borrow().synced_frame_data(0.1, 1000.0);
 
       let left_projection_matrix = math::vec_to_matrix(&frame_data.left_projection_matrix);
       let right_projection_matrix = math::vec_to_matrix(&frame_data.right_projection_matrix);
@@ -371,7 +360,7 @@ fn main() {
         (&canvas.viewports[1], &right_projection_matrix, &right_view_matrix),
       ];
 
-      let mut framebuffer = canvas.get_framebuffer(&context).unwrap();
+      let mut framebuffer = canvas.get_framebuffer(&display).unwrap();
       framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
       for eye in &eyes {
@@ -407,13 +396,12 @@ fn main() {
       }
 
       if vr_mode {
-        let display = displays.get(0).unwrap();
-        display.borrow_mut().submit_frame(&canvas.layer);
+        vr_display.unwrap().borrow_mut().submit_frame(&canvas.layer);
       }
 
       // now draw the canvas as a texture to the window
 
-      let target = context.draw();
+      let target = display.draw();
 
       let src_rect = glium::Rect {
         left: 0,
@@ -438,11 +426,20 @@ fn main() {
 
     match action {
       Action::ChangeResolution(scale) => canvas.set_resolution_scale(scale),
-      Action::Quit => {
-        println!("Exiting...");
-        return;
+      Action::Quit => return,
+      Action::Resume => {
+        gui.is_visible = false;
+
+        if !vr_mode {
+          let (width, height) = window.get_inner_size_pixels().unwrap();
+          let origin_x = (width / 2) as i32;
+          let origin_y = (height / 2) as i32;
+          window.set_cursor_position(origin_x, origin_y).unwrap();
+          window.set_cursor(MouseCursor::NoneCursor);
+          window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
+        }
       },
-      Action::None => {},
+      Action::None => (),
     }
 
     // once every 100 frames, check for VR events
@@ -467,79 +464,81 @@ fn main() {
       }
     }
 
-    assert_no_gl_error!(context);
+    assert_no_gl_error!(display);
 
-    for event in context.poll_events() {
-      if let Some(event) = conrod::backend::winit::convert(event.clone(), &context) {
+    let mut is_done = false;
+
+    events_loop.poll_events(|event| {
+      if let Some(event) = conrod::backend::winit::convert_event(event.clone(), &display) {
         gui.handle_event(event);
       }
 
       match event {
-        Event::Closed => {
-          println!("Exiting...");
-          return;
-        },
-        Event::KeyboardInput(_, _, Some(VirtualKeyCode::Q)) => {
-          if gui.is_visible {
-            println!("Exiting...");
-            return;
-          }
-        },
-        Event::KeyboardInput(element_state, _, Some(key_code)) => {
-          let key_is_pressed = element_state == ElementState::Pressed;
+        Event::WindowEvent { event, .. } => match event {
+          WindowEvent::Closed => is_done = true,
+          WindowEvent::Resized(width, height) => {
+            render_dimensions = (width / 2, height);
+            println!("resized to {}x{}", width, height);
+          },
+          WindowEvent::KeyboardInput { input, .. } => {
+            let key_is_pressed = input.state == ElementState::Pressed;
 
-          match key_code {
-            // call when key is pressed
-            VirtualKeyCode::Escape    => if key_is_pressed {
-              gui.is_visible = !gui.is_visible;
+            match input {
+              KeyboardInput { virtual_keycode, .. } => match virtual_keycode {
+                Some(VirtualKeyCode::Q)         => if gui.is_visible { is_done = true },
+                Some(VirtualKeyCode::Escape)    => if key_is_pressed {
+                  gui.is_visible = !gui.is_visible;
 
-              if gui.is_visible {
-                window.set_cursor(MouseCursor::Default);
-                window.set_cursor_state(CursorState::Normal)
-                    .ok()
-                    .expect("Could not ungrab mouse cursor");
-              } else {
-                window.set_cursor(MouseCursor::NoneCursor);
-                window.set_cursor_state(CursorState::Grab)
-                    .ok()
-                    .expect("Could not grab mouse cursor");
-              }
-            },
-            VirtualKeyCode::Equals    => if key_is_pressed { frame_performance.reduce_fps() },
-            VirtualKeyCode::Minus     => if key_is_pressed { frame_performance.increase_fps() },
-            VirtualKeyCode::PageDown  => if key_is_pressed { canvas.decrease_resolution() },
-            VirtualKeyCode::PageUp    => if key_is_pressed { canvas.increase_resolution() },
+                  if gui.is_visible {
+                    window.set_cursor(MouseCursor::Default);
+                    window.set_cursor_state(CursorState::Normal)
+                        .ok()
+                        .expect("Could not ungrab mouse cursor");
+                  } else {
+                    window.set_cursor(MouseCursor::NoneCursor);
+                    window.set_cursor_state(CursorState::Grab)
+                        .ok()
+                        .expect("Could not grab mouse cursor");
+                  }
+                },
+                Some(VirtualKeyCode::Equals)    => if key_is_pressed { frame_performance.reduce_fps() },
+                Some(VirtualKeyCode::Minus)     => if key_is_pressed { frame_performance.increase_fps() },
+                Some(VirtualKeyCode::PageDown)  => if key_is_pressed { canvas.decrease_resolution() },
+                Some(VirtualKeyCode::PageUp)    => if key_is_pressed { canvas.increase_resolution() },
 
-            // activate while key is pressed
-            VirtualKeyCode::W => fps_camera.forward = key_is_pressed,
-            VirtualKeyCode::S => fps_camera.backward = key_is_pressed,
-            VirtualKeyCode::A => fps_camera.left = key_is_pressed,
-            VirtualKeyCode::D => fps_camera.right = key_is_pressed,
-            _ => {},
-          }
+                // activate while key is pressed
+                Some(VirtualKeyCode::W) => fps_camera.forward = key_is_pressed,
+                Some(VirtualKeyCode::S) => fps_camera.backward = key_is_pressed,
+                Some(VirtualKeyCode::A) => fps_camera.left = key_is_pressed,
+                Some(VirtualKeyCode::D) => fps_camera.right = key_is_pressed,
+                _ => {},
+              },
+            }
+          },
+          WindowEvent::MouseMoved { position, .. } => {
+            if !vr_mode && !gui.is_visible {
+              let (width, height) = window.get_inner_size_pixels().unwrap();
+              let origin_x = width as i32 / 2;
+              let origin_y = height as i32 / 2;
+              let rel_x = position.0 as i32 - origin_x;
+              let rel_y = position.1 as i32 - origin_y;
+              fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
+                .max(-f32::consts::PI / 2.0)
+                .min(f32::consts::PI / 2.0));
+              fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
+              window.set_cursor_position(origin_x, origin_y).unwrap();
+            }
+          },
+          _ => (),
         },
-        Event::MouseMoved(x, y) => {
-          if !vr_mode && !gui.is_visible {
-            let (width, height) = window.get_inner_size_pixels().unwrap();
-            let origin_x = width as i32 / 2;
-            let origin_y = height as i32 / 2;
-            let rel_x = x - origin_x;
-            let rel_y = y - origin_y;
-            fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
-              .max(-f32::consts::PI / 2.0)
-              .min(f32::consts::PI / 2.0));
-            fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
-            window.set_cursor_position(origin_x, origin_y).unwrap();
-          }
-        },
-        Event::Resized(width, height) => {
-          render_dimensions = ((width as f64 * 0.5) as u32, height);
-          println!("resized to {}x{}", width, height);
-        }
-        _ => {}
+        _ => (),
       };
-    }
+    });
 
     frame_performance.process_frame_end(vr_mode);
+
+    if is_done {
+      return;
+    }
   }
 }
