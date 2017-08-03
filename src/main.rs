@@ -104,12 +104,13 @@ fn main() {
   let mut events_loop = EventsLoop::new();
   let window_builder = WindowBuilder::new()
     .with_title("Engyn")
-    .with_dimensions(1620, 900); // TODO calculate optimal dimensions from monitor and vr display
+    .with_fullscreen(glium::glutin::get_primary_monitor()); // TODO calculate optimal dimensions from monitor and vr display
 
   let context_builder = ContextBuilder::new()
     .with_vsync(!vr_mode);
 
   let display = Display::new(window_builder, context_builder, &events_loop).unwrap();
+
   let window = display.gl_window();
 
   let mut render_dimensions = match vr_display {
@@ -308,7 +309,8 @@ fn main() {
     });
   }
 
-  let mut gui = Gui::new(&display, render_dimensions.0 as f64, render_dimensions.1 as f64);
+  let (width, height) = window.get_inner_size_pixels().unwrap();
+  let mut gui = Gui::new(&display, width as f64, height as f64);
 
   let mut frame_performance = FramePerformance::new();
 
@@ -354,6 +356,8 @@ fn main() {
 
     let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
 
+    action = gui.prepare();
+
     {
       let eyes = [
         (&canvas.viewports[0], &left_projection_matrix, &left_view_matrix),
@@ -389,10 +393,7 @@ fn main() {
           gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
         }
 
-        // first action goes through
-        // TODO: split Gui.draw so you draw once to framebuffer and then blit the framebuffer twice
-        let tmp_action = gui.draw(&mut framebuffer, viewport);
-        action = match action { Action::None => tmp_action, _ => action };
+        gui.draw(&mut framebuffer, viewport);
       }
 
       if vr_mode {
@@ -518,15 +519,15 @@ fn main() {
           WindowEvent::MouseMoved { position, .. } => {
             if !vr_mode && !gui.is_visible {
               let (width, height) = window.get_inner_size_pixels().unwrap();
-              let origin_x = width as i32 / 2;
-              let origin_y = height as i32 / 2;
-              let rel_x = position.0 as i32 - origin_x;
-              let rel_y = position.1 as i32 - origin_y;
+              let origin_x = width as f64 / 2.0;
+              let origin_y = height as f64 / 2.0;
+              let rel_x = position.0 - origin_x;
+              let rel_y = position.1 - origin_y;
               fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
                 .max(-f32::consts::PI / 2.0)
                 .min(f32::consts::PI / 2.0));
               fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
-              window.set_cursor_position(origin_x, origin_y).unwrap();
+              window.set_cursor_position(origin_x as i32, origin_y as i32).unwrap();
             }
           },
           _ => (),

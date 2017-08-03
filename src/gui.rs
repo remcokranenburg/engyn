@@ -85,9 +85,9 @@ impl<'a> Gui<'a> {
   pub fn new(display: &'a Display, width: f64, height: f64) -> Gui {
     let theme = Theme {
       name: "Engyn Default Theme".to_string(),
-      padding: Padding { x: Range::new(50.0, 50.0), y: Range::new(50.0, 50.0) },
+      padding: Padding { x: Range::new(25.0, 25.0), y: Range::new(25.0, 25.0) },
       x_position: Position::Relative(Relative::Align(Align::Start), None),
-      y_position: Position::Relative(Relative::Direction(Direction::Backwards, 50.0), None),
+      y_position: Position::Relative(Relative::Direction(Direction::Backwards, 25.0), None),
       background_color: color::DARK_CHARCOAL,
       shape_color: color::LIGHT_CHARCOAL,
       border_color: color::BLACK,
@@ -102,13 +102,13 @@ impl<'a> Gui<'a> {
       double_click_threshold: Duration::from_millis(500),
     };
 
-    let mut ui = UiBuilder::new([width * 2.0, height]).theme(theme).build();
+    let mut ui = UiBuilder::new([768.0, 960.0]).theme(theme).build();
     ui.fonts.insert_from_file("data/Cantarell-Regular.ttf").unwrap();
 
     Gui {
       is_visible: false,
 
-      canvas: AdaptiveCanvas::new(display, width as u32, height as u32),
+      canvas: AdaptiveCanvas::new(display, 768, 960),
       display: display,
       ids: Ids::new(ui.widget_id_generator()),
       image_map: Map::<Texture2d>::new(),
@@ -119,14 +119,14 @@ impl<'a> Gui<'a> {
     }
   }
 
-  pub fn draw<S>(&mut self, target: &mut S, viewport: Rect) -> Action where S: Surface {
+  pub fn prepare(&mut self) -> Action {
+    if !self.is_visible { return Action::None }
+
     let mut action = Action::None;
     let button_default_style = ButtonStyle::default();
     let button_focussed_style = ButtonStyle { color: Some(color::BLUE), ..ButtonStyle::default() };
     let slider_default_color = color::LIGHT_CHARCOAL;
     let slider_focussed_color = color::BLUE;
-
-    if !self.is_visible { return action; }
 
     {
       let ui = &mut self.ui.set_widgets();
@@ -139,18 +139,18 @@ impl<'a> Gui<'a> {
       Text::new("Welcome to Engyn")
           .parent(self.ids.container)
           .mid_top_of(self.ids.container)
-          .font_size(150)
+          .font_size(200)
           .set(self.ids.title_text, ui);
 
       Text::new("Press Escape to bring up this menu and use arrow keys to navigate.")
           .parent(self.ids.container)
-          .padded_w_of(self.ids.container, 50.0)
+          .padded_w_of(self.ids.container, 25.0)
           .wrap_by_word()
           .set(self.ids.help_text, ui);
 
       if Button::new()
           .parent(self.ids.container)
-          .padded_w_of(self.ids.container, 50.0)
+          .padded_w_of(self.ids.container, 25.0)
           .with_style(if self.selected_widget == 0 {
               button_focussed_style
             } else {
@@ -165,7 +165,7 @@ impl<'a> Gui<'a> {
 
       if let Some(scale) = Slider::new(self.resolution_scale as f64, 1.0, 20.0)
           .parent(self.ids.container)
-          .padded_w_of(self.ids.container, 50.0)
+          .padded_w_of(self.ids.container, 25.0)
           .color(if self.selected_widget == 1 {
               slider_focussed_color
             } else {
@@ -181,7 +181,7 @@ impl<'a> Gui<'a> {
 
       if Button::new()
           .parent(self.ids.container)
-          .padded_w_of(self.ids.container, 50.0)
+          .padded_w_of(self.ids.container, 25.0)
           .with_style(if self.selected_widget == 2 {
               button_focussed_style
             } else {
@@ -207,6 +207,12 @@ impl<'a> Gui<'a> {
       self.renderer.draw(self.display, &mut framebuffer, &self.image_map).unwrap();
     }
 
+    action
+  }
+
+  pub fn draw<S>(&mut self, target: &mut S, viewport: Rect) where S: Surface {
+    if !self.is_visible { return; }
+
     let src_rect = Rect {
       left: 0,
       bottom: 0,
@@ -214,16 +220,18 @@ impl<'a> Gui<'a> {
       height: self.canvas.viewports[0].height,
     };
 
+    let gui_width = viewport.width as f64 * 0.4;
+    let gui_height = viewport.height as f64 * 0.4;
+
     let blit_target = BlitTarget {
-      left: viewport.left + viewport.width / 4,
-      bottom: viewport.bottom + viewport.height / 4,
-      width: (viewport.width / 2) as i32,
-      height: (viewport.height / 2) as i32,
+      left: viewport.left + viewport.width / 2 - (gui_width * 0.5) as u32,
+      bottom: viewport.bottom + viewport.height / 2 - (gui_height * 0.5) as u32,
+      width: gui_width as i32,
+      height: gui_height as i32,
     };
 
+    let mut framebuffer = self.canvas.get_framebuffer(self.display).unwrap();
     framebuffer.blit_color(&src_rect, target, &blit_target, MagnifySamplerFilter::Linear);
-
-    action
   }
 
   pub fn handle_event(&mut self, event: Input) {
