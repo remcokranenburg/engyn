@@ -16,10 +16,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::rc::Rc;
+
 use geometry::Geometry;
 use material::Material;
 
-pub struct Mesh<'a> {
+pub struct Mesh {
   pub geometry: Geometry,
-  pub material: Material<'a>,
+  pub material: Rc<Material>,
 }

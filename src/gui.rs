@@ -46,6 +46,8 @@ use glium::Rect;
 use glium::Surface;
 use glium::texture::Texture2d;
 use glium::uniforms::MagnifySamplerFilter;
+use std::env;
+use std::path::Path;
 use std::time::Duration;
 
 use adaptive_canvas::AdaptiveCanvas;
@@ -83,6 +85,11 @@ pub struct Gui<'a> {
 
 impl<'a> Gui<'a> {
   pub fn new(display: &'a Display, width: f64, height: f64) -> Gui {
+    // TODO: put this in a 'system integration' module
+    let executable_string = env::args().nth(0).unwrap();
+    let executable_path = Path::new(&executable_string).parent().unwrap();
+    let project_path = executable_path.parent().unwrap().parent().unwrap();
+
     let theme = Theme {
       name: "Engyn Default Theme".to_string(),
       padding: Padding { x: Range::new(25.0, 25.0), y: Range::new(25.0, 25.0) },
@@ -103,7 +110,7 @@ impl<'a> Gui<'a> {
     };
 
     let mut ui = UiBuilder::new([768.0, 960.0]).theme(theme).build();
-    ui.fonts.insert_from_file("data/Cantarell-Regular.ttf").unwrap();
+    ui.fonts.insert_from_file(project_path.join("data").join("Cantarell-Regular.ttf")).unwrap();
 
     Gui {
       is_visible: false,

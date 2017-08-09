@@ -67,8 +67,10 @@ use glium::texture::RawImage2d;
 use glium::texture::SrgbTexture2d;
 use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
+use std::env;
 use std::path::Path;
 use std::f32;
+use std::rc::Rc;
 use webvr::VREvent;
 use webvr::VRDisplayEvent;
 use webvr::VRServiceManager;
@@ -85,14 +87,17 @@ use mesh::Mesh;
 use object::Object;
 use performance::FramePerformance;
 
-fn load_texture(context: &Facade, name: &str) -> SrgbTexture2d {
-  let image = image::open(&Path::new(&name)).unwrap().to_rgba();
+fn load_texture(context: &Facade, name: &Path) -> SrgbTexture2d {
+  let image = image::open(name)
+    .expect(&format!("Could not open: {}", name.to_str().unwrap())).to_rgba();
   let image_dimensions = image.dimensions();
   let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
   SrgbTexture2d::new(context, image).unwrap()
 }
 
 fn main() {
+  let args: Vec<_> = env::args().collect();
+
   let mut vr = VRServiceManager::new();
   vr.register_defaults();
   vr.initialize_services();
@@ -104,7 +109,7 @@ fn main() {
   let mut events_loop = EventsLoop::new();
   let window_builder = WindowBuilder::new()
     .with_title("Engyn")
-    .with_fullscreen(glium::glutin::get_primary_monitor()); // TODO calculate optimal dimensions from monitor and vr display
+    .with_fullscreen(glium::glutin::get_primary_monitor());
 
   let context_builder = ContextBuilder::new()
     .with_vsync(!vr_mode);
@@ -132,11 +137,30 @@ fn main() {
     window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
   }
 
-  println!("Loading textures...");
-  let empty_tex = load_texture(&display, "data/empty.bmp");
-  let marble_tex = load_texture(&display, "data/marble.jpg");
-  let terrain_tex = load_texture(&display, "data/terrain.png");
-  println!("Textures loaded!");
+  let executable_string = env::args().nth(0).unwrap();
+  let executable_path = Path::new(&executable_string).parent().unwrap();
+  let project_path = executable_path.parent().unwrap().parent().unwrap();
+
+  println!("Executable path: {}", executable_path.to_str().unwrap());
+  println!("Executable path: {}", project_path.to_str().unwrap());
+
+  println!("Loading materials...");
+  let empty_material = Rc::new(Material {
+    albedo_map: load_texture(&display, &project_path.join("data").join("empty.bmp")),
+    metalness: 0.0,
+    reflectivity: 0.0,
+  });
+  let marble_material = Rc::new(Material {
+    albedo_map: load_texture(&display, &project_path.join("data").join("empty.bmp")),
+    metalness: 0.0,
+    reflectivity: 0.0,
+  });
+  let terrain_material = Rc::new(Material {
+    albedo_map: load_texture(&display, &project_path.join("data").join("empty.bmp")),
+    metalness: 0.0,
+    reflectivity: 0.0,
+  });
+  println!("Materials loaded!");
 
   let mut canvas = AdaptiveCanvas::new(
       &display,
@@ -228,55 +252,64 @@ fn main() {
 
   let mut world = Vec::new();
 
-  // a triangle
-  world.push(Object::new_triangle(&display, &marble_tex, [1.0, 1.0], [0.0, 0.0, 0.0],
-      [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
+  if let Some(filename) = env::args().nth(1) {
+    let loaded_objects = Object::from_file(&display, &filename);
 
-  // a terrain mesh
-  world.push(Object {
-    mesh: Some(Mesh {
-      geometry: Geometry::from_obj(&display, "data/terrain.obj"),
-      material: Material { albedo_map: &terrain_tex, metalness: 0.0, reflectivity: 0.0 },
-    }),
-    transform: Matrix4::<f32>::identity(),
-  });
-
-  // a teapot
-
-  let my_teapot_texcoords = {
-    let mut texcoords = [Texcoord { texcoord: (0.0, 0.0) }; 531];
-
-    for i in 0..texcoords.len() {
-      texcoords[i].texcoord = rand::random::<(f32, f32)>();
+    for o in loaded_objects {
+      world.push(o);
     }
 
-    texcoords
-  };
+  } else {
+    // a triangle
+    world.push(Object::new_triangle(&display, Rc::clone(&marble_material), [1.0, 1.0], [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
 
-  let my_teapot = Object {
-    mesh: Some(Mesh {
-      geometry: Geometry {
-        indices: Some(IndexBuffer::new(
-            &display,
-            PrimitiveType::TrianglesList,
-            &teapot::INDICES).unwrap()),
-        normals: VertexBuffer::new(&display, &teapot::NORMALS).unwrap(),
-        vertices: VertexBuffer::new(&display, &teapot::VERTICES).unwrap(),
-        texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
-      },
-      material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
-    }),
-    transform: Matrix4::new(
-        0.005, 0.0, 0.0, 0.0,
-        0.0, 0.005, 0.0, 0.0,
-        0.0, 0.0, 0.005, 0.0,
-        0.0, 1.0, 0.0, 1.0),
-  };
+    // a terrain mesh
+    world.push(Object {
+      mesh: Some(Mesh {
+        geometry: Geometry::from_obj(&display, "data/terrain.obj"),
+        material: terrain_material,
+      }),
+      transform: Matrix4::<f32>::identity(),
+    });
 
-  world.push(my_teapot);
+    // a teapot
+
+    let my_teapot_texcoords = {
+      let mut texcoords = [Texcoord { texcoord: (0.0, 0.0) }; 531];
+
+      for i in 0..texcoords.len() {
+        texcoords[i].texcoord = rand::random::<(f32, f32)>();
+      }
+
+      texcoords
+    };
+
+    let my_teapot = Object {
+      mesh: Some(Mesh {
+        geometry: Geometry {
+          indices: Some(IndexBuffer::new(
+              &display,
+              PrimitiveType::TrianglesList,
+              &teapot::INDICES).unwrap()),
+          normals: VertexBuffer::new(&display, &teapot::NORMALS).unwrap(),
+          vertices: VertexBuffer::new(&display, &teapot::VERTICES).unwrap(),
+          texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
+        },
+        material: Rc::clone(&marble_material),
+      }),
+      transform: Matrix4::new(
+          0.005, 0.0, 0.0, 0.0,
+          0.0, 0.005, 0.0, 0.0,
+          0.0, 0.0, 0.005, 0.0,
+          0.0, 1.0, 0.0, 1.0),
+    };
+
+    world.push(my_teapot);
+  }
 
   // empty texture to force glutin clean
-  world.push(Object::new_plane(&display, &empty_tex, [0.0001,0.0001], [-0.1, 0.1, 0.0],
+  world.push(Object::new_plane(&display, Rc::clone(&empty_material), [0.0001,0.0001], [-0.1, 0.1, 0.0],
       [0.0, 0.0, 0.0], [-1.0,1.0,1.0]));
 
   // add a light
@@ -308,7 +341,7 @@ fn main() {
     gamepad_models.push(Object {
       mesh: Some(Mesh {
         geometry: Geometry::from_obj(&display, "data/vive-controller.obj"),
-        material: Material { albedo_map: &marble_tex, metalness: 0.0, reflectivity: 0.0 },
+        material: Rc::clone(&marble_material),
       }),
       transform: Matrix4::<f32>::identity(),
     });

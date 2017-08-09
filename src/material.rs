@@ -18,8 +18,8 @@
 
 use glium::texture::SrgbTexture2d;
 
-pub struct Material<'a> {
-  pub albedo_map: &'a SrgbTexture2d,
+pub struct Material {
+  pub albedo_map: SrgbTexture2d,
   pub metalness: f32,
   pub reflectivity: f32,
 }
