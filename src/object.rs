@@ -32,6 +32,7 @@ use glium::texture::SrgbTexture2d;
 use glium::texture::RawImage2d;
 use glium::VertexBuffer;
 use image;
+use std::f32;
 use std::path::MAIN_SEPARATOR;
 use std::path::Path;
 use std::rc::Rc;
@@ -49,110 +50,139 @@ use mesh::Mesh;
 use uniforms::ObjectUniforms;
 
 pub struct Object {
+  pub children: Vec<Object>,
   pub mesh: Option<Mesh>,
   pub transform: Matrix4<f32>,
 }
 
-pub fn objects_from_file(context: &Facade, filename: &str) -> Vec<Object> {
-  // TODO: put this in a 'system integration' module
-  let executable_string = env::args().nth(0).unwrap();
-  let executable_path = Path::new(&executable_string).parent().unwrap();
-  let project_path = executable_path.parent().unwrap().parent().unwrap();
-
-  let mut objects = Vec::<Object>::new();
-  let mut materials = Vec::<Material>::new();
-
-  let obj_file = Path::new(filename);
-  let obj_path = obj_file.parent().unwrap();
-
-  let (objs, mtls) = tobj::load_obj(&obj_file).unwrap(); // TODO: propagate error
-
-
-  let mut materials = Vec::new();
-
-  for mtl in mtls {
-    let texture_filename = mtl.diffuse_texture.replace("\\", &MAIN_SEPARATOR.to_string());
-    let texture_file = obj_path.join(&texture_filename);
-
-    let image = image::open(&texture_file)
-      .unwrap_or({
-        println!("Could not open: {}", texture_file.to_str().unwrap());
-        image::open(&project_path.join("data").join("empty.bmp"))
-          .expect(&format!("Could not open: {} and also not its empty replacement",
-              mtl.diffuse_texture))
-      })
-      .to_rgba();
-    let image_dimensions = image.dimensions();
-    let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-    let albedo_map = SrgbTexture2d::new(context, image).unwrap();
-
-    materials.push(Rc::new(Material {
-      albedo_map: albedo_map,
-      metalness: 0.0,
-      reflectivity: 0.0,
-    }));
-  }
-
-  for obj in objs {
-    let indices = if obj.mesh.indices.len() > 0 {
-      Some(IndexBuffer::new(context, PrimitiveType::TrianglesList, &obj.mesh.indices).unwrap())
-    } else {
-      None
-    };
-
-    let mut normals = VertexBuffer::empty(context, obj.mesh.normals.len()).unwrap();
-    {
-      let mut mapped = normals.map();
-      for i in 0..obj.mesh.normals.len() / 3 {
-        mapped[i] = Normal { normal: (
-          obj.mesh.normals[i * 3 + 0],
-          obj.mesh.normals[i * 3 + 1],
-          obj.mesh.normals[i * 3 + 2],
-        )};
-      }
-    }
-
-    let mut vertices = VertexBuffer::empty(context, obj.mesh.positions.len()).unwrap();
-    {
-      let mut mapped = vertices.map();
-      for i in 0..obj.mesh.positions.len() / 3 {
-        mapped[i] = Vertex { position: (
-          obj.mesh.positions[i * 3 + 0],
-          obj.mesh.positions[i * 3 + 1],
-          obj.mesh.positions[i * 3 + 2],
-        )};
-      }
-    }
-
-    let mut texcoords = VertexBuffer::empty(context, obj.mesh.texcoords.len()).unwrap();
-    {
-      let mut mapped = texcoords.map();
-      for i in 0..obj.mesh.texcoords.len() / 2 {
-        mapped[i] = Texcoord { texcoord: (
-          obj.mesh.texcoords[i * 2 + 0],
-          obj.mesh.texcoords[i * 2 + 1],
-        )};
-      }
-    }
-
-    objects.push(Object {
-      mesh: Some(Mesh {
-        geometry: Geometry {
-          indices: indices,
-          normals: normals,
-          vertices: vertices,
-          texcoords: texcoords,
-        },
-        material: Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
-      }),
-      transform: Matrix4::<f32>::identity(),
-    });
-  }
-
-  objects
-}
-
 impl Object {
+  pub fn from_file(context: &Facade, filename: &str) -> Object {
+    // TODO: put this in a 'system integration' module
+    let executable_string = env::args().nth(0).unwrap();
+    let executable_path = Path::new(&executable_string).parent().unwrap();
+    let project_path = executable_path.parent().unwrap().parent().unwrap();
+
+    let mut objects = Vec::<Object>::new();
+    let mut materials = Vec::<Material>::new();
+
+    let obj_file = Path::new(filename);
+    let obj_path = obj_file.parent().unwrap();
+
+    let (objs, mtls) = tobj::load_obj(&obj_file).unwrap(); // TODO: propagate error
+
+    let mut materials = Vec::new();
+
+    for mtl in mtls {
+      let texture_filename = mtl.diffuse_texture.replace("\\", &MAIN_SEPARATOR.to_string());
+      let texture_file = obj_path.join(&texture_filename);
+
+      let image = image::open(&texture_file)
+        .unwrap_or({
+          println!("Could not open: {}", texture_file.to_str().unwrap());
+          image::open(&project_path.join("data").join("empty.bmp"))
+            .expect(&format!("  Also could not open the empty replacement texture"))
+        })
+        .to_rgba();
+      let image_dimensions = image.dimensions();
+      let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
+      let albedo_map = SrgbTexture2d::new(context, image).unwrap();
+
+      materials.push(Rc::new(Material {
+        albedo_map: albedo_map,
+        metalness: 0.0,
+        reflectivity: 0.0,
+      }));
+    }
+
+    let mut min_pos = [f32::INFINITY; 3];
+    let mut max_pos = [f32::NEG_INFINITY; 3];
+
+    for obj in objs {
+
+      for idx in &obj.mesh.indices {
+        let i = *idx as usize;
+        let pos = [
+            obj.mesh.positions[3 * i],
+            obj.mesh.positions[3 * i + 1],
+            obj.mesh.positions[3 * i + 2]
+        ];
+
+        for i in 0..pos.len() {
+          min_pos[i] = f32::min(min_pos[i], pos[i]);
+          max_pos[i] = f32::max(max_pos[i], pos[i]);
+        }
+      }
+
+      let indices = if obj.mesh.indices.len() > 0 {
+        Some(IndexBuffer::new(context, PrimitiveType::TrianglesList, &obj.mesh.indices).unwrap())
+      } else {
+        None
+      };
+
+      let mut normals = VertexBuffer::empty(context, obj.mesh.normals.len()).unwrap();
+      {
+        let mut mapped = normals.map();
+        for i in 0..obj.mesh.normals.len() / 3 {
+          mapped[i] = Normal { normal: (
+            obj.mesh.normals[i * 3 + 0],
+            obj.mesh.normals[i * 3 + 1],
+            obj.mesh.normals[i * 3 + 2],
+          )};
+        }
+      }
+
+      let mut vertices = VertexBuffer::empty(context, obj.mesh.positions.len()).unwrap();
+      {
+        let mut mapped = vertices.map();
+        for i in 0..obj.mesh.positions.len() / 3 {
+          mapped[i] = Vertex { position: (
+            obj.mesh.positions[i * 3 + 0],
+            obj.mesh.positions[i * 3 + 1],
+            obj.mesh.positions[i * 3 + 2],
+          )};
+        }
+      }
+
+      let mut texcoords = VertexBuffer::empty(context, obj.mesh.texcoords.len()).unwrap();
+      {
+        let mut mapped = texcoords.map();
+        for i in 0..obj.mesh.texcoords.len() / 2 {
+          mapped[i] = Texcoord { texcoord: (
+            obj.mesh.texcoords[i * 2 + 0],
+            obj.mesh.texcoords[i * 2 + 1],
+          )};
+        }
+      }
+
+      objects.push(Object {
+        children: Vec::new(),
+        mesh: Some(Mesh {
+          geometry: Geometry {
+            indices: indices,
+            normals: normals,
+            vertices: vertices,
+            texcoords: texcoords,
+          },
+          material: Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
+        }),
+        transform: Matrix4::<f32>::identity(),
+      });
+    }
+
+    let lengths = max_pos.iter().zip(min_pos.iter()).map(|x| x.0 - x.1);
+    let target_length = 450.0; // 2²+2²+2²
+    let current_length = lengths.fold(0.0, |result, x| result + f32::powf(x, 2.0));
+
+    let scale = Matrix4::from_scale(f32::sqrt(target_length / current_length));
+    let translation = Matrix4::from_translation(Vector3::new(0.0, 1.0, 0.0));
+
+    Object {
+      children: objects,
+      mesh: None,
+      transform: translation * scale,
+    }
+  }
+
   pub fn new_plane(context: &Facade, material: Rc<Material>, size: [f32;2], pos: [f32;3],
       rot: [f32;3], scale: [f32;3]) -> Object {
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
@@ -161,6 +191,7 @@ impl Object {
     let matrix = translation * scale * rotation;
 
     Object {
+      children: Vec::new(),
       mesh: Some(Mesh {
         geometry: Geometry::new_quad(context, size, false),
         material: Rc::clone(&material),
@@ -177,6 +208,7 @@ impl Object {
     let matrix = translation * scale * rotation;
 
     Object {
+      children: Vec::new(),
       mesh: Some(Mesh {
         geometry: Geometry::new_triangle(context, size),
         material: Rc::clone(&material),
@@ -185,16 +217,27 @@ impl Object {
     }
   }
 
+
   pub fn draw<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
       program: &Program, render_params: &DrawParameters, num_lights: i32, lights: [Light; 32])
       where S: Surface {
+    let root = Matrix4::<f32>::identity();
+    self.draw_recurse(target, projection, view, root, program, render_params, num_lights, lights);
+  }
+
+
+  fn draw_recurse<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
+      group: Matrix4<f32>, program: &Program, render_params: &DrawParameters, num_lights: i32,
+      lights: [Light; 32]) where S: Surface {
+    let model_transform = group * self.transform;
+
     match self.mesh {
       Some(ref m) => {
 
         let uniforms = ObjectUniforms {
           projection: projection,
           view: view,
-          model: math::matrix_to_uniform(self.transform),
+          model: math::matrix_to_uniform(model_transform),
           albedo_map: &m.material.albedo_map,
           metalness: m.material.metalness,
           reflectivity: m.material.reflectivity,
@@ -218,6 +261,11 @@ impl Object {
         }
       },
       None => (),
+    }
+
+    for object in &mut self.children {
+      object.draw_recurse(target, projection, view, model_transform, program, render_params,
+          num_lights, lights);
     }
   }
 }

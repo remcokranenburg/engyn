@@ -253,12 +253,7 @@ fn main() {
   let mut world = Vec::new();
 
   if let Some(filename) = env::args().nth(1) {
-    let loaded_objects = object::objects_from_file(&display, &filename);
-
-    for o in loaded_objects {
-      world.push(o);
-    }
-
+    world.push(Object::from_file(&display, &filename));
   } else {
     // a triangle
     world.push(Object::new_triangle(&display, Rc::clone(&marble_material), [1.0, 1.0], [0.0, 0.0, 0.0],
@@ -266,6 +261,7 @@ fn main() {
 
     // a terrain mesh
     world.push(Object {
+      children: Vec::new(),
       mesh: Some(Mesh {
         geometry: Geometry::from_obj(&display, "data/terrain.obj"),
         material: terrain_material,
@@ -286,6 +282,7 @@ fn main() {
     };
 
     let my_teapot = Object {
+      children: Vec::new(),
       mesh: Some(Mesh {
         geometry: Geometry {
           indices: Some(IndexBuffer::new(
@@ -339,6 +336,7 @@ fn main() {
   for _ in &gamepads {
     println!("We've found a gamepad!");
     gamepad_models.push(Object {
+      children: Vec::new(),
       mesh: Some(Mesh {
         geometry: Geometry::from_obj(&display, "data/vive-controller.obj"),
         material: Rc::clone(&marble_material),
