@@ -253,7 +253,7 @@ fn main() {
   let mut world = Vec::new();
 
   if let Some(filename) = env::args().nth(1) {
-    let loaded_objects = Object::from_file(&display, &filename);
+    let loaded_objects = object::objects_from_file(&display, &filename);
 
     for o in loaded_objects {
       world.push(o);
