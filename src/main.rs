@@ -151,12 +151,12 @@ fn main() {
     reflectivity: 0.0,
   });
   let marble_material = Rc::new(Material {
-    albedo_map: load_texture(&display, &project_path.join("data").join("empty.bmp")),
+    albedo_map: load_texture(&display, &project_path.join("data").join("marble.jpg")),
     metalness: 0.0,
     reflectivity: 0.0,
   });
   let terrain_material = Rc::new(Material {
-    albedo_map: load_texture(&display, &project_path.join("data").join("empty.bmp")),
+    albedo_map: load_texture(&display, &project_path.join("data").join("terrain.png")),
     metalness: 0.0,
     reflectivity: 0.0,
   });
