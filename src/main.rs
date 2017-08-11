@@ -167,6 +167,8 @@ fn main() {
       render_dimensions.0 * 4,
       render_dimensions.1 * 2);
 
+  canvas.set_resolution_scale(10);
+
   let render_program = Program::from_source(
       &display,
       &r#"
