@@ -392,8 +392,11 @@ fn main() {
     } else {
       let standing_transform = Matrix4::<f32>::identity();
       let view = fps_camera.get_view(0.016); // TODO: get actual timedelta
-
-      (standing_transform, mono_projection, mono_projection, view, view)
+      let left_translation = Matrix4::from_translation(Vector3::new(-0.05, 0.0, 0.0));
+      let left_view = left_translation * view;
+      let right_translation = Matrix4::from_translation(Vector3::new(0.05, 0.0, 0.0));
+      let right_view = right_translation * view;
+      (standing_transform, mono_projection, mono_projection, left_view, right_view)
     };
 
     let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
