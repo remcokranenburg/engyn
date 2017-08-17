@@ -83,48 +83,25 @@ impl<'a> AdaptiveCanvas {
     }
   }
 
-  pub fn decrease_resolution(&mut self) {
-    let width = self.viewports[0].width * 2 - self.step_width;
-    let height = self.viewports[0].height - self.step_height;
+  pub fn set_resolution_scale(&mut self, scale: f32) {
+    let width = scale * self.max_width as f32;
+    let height = scale * self.max_height as f32;
 
-    if width >= self.step_width && height >= self.step_height {
-      println!("Decreasing resolution.");
-      self.set_resolution(width, height);
-    } else {
-      println!("Already at lowest resolution.");
-    }
-  }
-
-  pub fn increase_resolution(&mut self) {
-    let width = self.viewports[0].width * 2 + self.step_width;
-    let height = self.viewports[0].height + self.step_height;
-
-    if width <= self.max_width && height <= self.max_height {
-      println!("Increasing resolution.");
-      self.set_resolution(width, height);
-    } else {
-      println!("Already at highest resolution.");
-    }
-  }
-
-  pub fn set_resolution_scale(&mut self, scale: u32) {
-    let width = scale * self.step_width;
-    let height = scale * self.step_height;
-
-    if width <= self.max_width && height <= self.max_height {
-      println!("Setting resolution {}x{}.", width, height);
+    if width as u32 <= self.max_width && height as u32 <= self.max_height {
       self.set_resolution(width, height);
     } else {
       println!("Can't set resolution {}x{}: too high", width, height);
     }
   }
 
-  pub fn set_resolution(&mut self, width: u32, height: u32) {
-    let fraction_width = width as f32 / self.texture.get_width() as f32;
-    let fraction_height = height as f32 / self.texture.get_height().unwrap() as f32;
+  pub fn set_resolution(&mut self, width: f32, height: f32) {
+    let bounded_width = f32::max(width, 320.0);
+    let bounded_height = f32::max(height, 240.0);
+    let fraction_width = bounded_width / self.texture.get_width() as f32;
+    let fraction_height = bounded_height / self.texture.get_height().unwrap() as f32;
 
     let fraction_half_width = fraction_width * 0.5;
-    let half_width = (width as f32 * 0.5) as u32;
+    let half_width = (width * 0.5) as u32;
 
     self.layer.left_bounds = [
         0.0,
@@ -145,11 +122,11 @@ impl<'a> AdaptiveCanvas {
         Texcoord { texcoord: (fraction_width, 0.0) }]);
 
     self.viewports[0].width = half_width;
-    self.viewports[0].height = height;
+    self.viewports[0].height = height as u32;
 
     self.viewports[1].left = half_width;
     self.viewports[1].width = half_width;
-    self.viewports[1].height = height;
+    self.viewports[1].height = height as u32;
   }
 
   pub fn get_framebuffer(&self, display: &Facade)

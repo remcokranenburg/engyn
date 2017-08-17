@@ -51,6 +51,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use adaptive_canvas::AdaptiveCanvas;
+use quality::Quality;
 
 widget_ids! {
   pub struct Ids {
@@ -58,13 +59,14 @@ widget_ids! {
     title_text,
     help_text,
     resume_button,
+    quality_text,
     resolution_slider,
+    msaa_slider,
     quit_button,
   }
 }
 
 pub enum Action {
-  ChangeResolution(u32),
   Quit,
   Resume,
   None,
@@ -126,7 +128,7 @@ impl<'a> Gui<'a> {
     }
   }
 
-  pub fn prepare(&mut self) -> Action {
+  pub fn prepare(&mut self, quality: &mut Quality) -> Action {
     if !self.is_visible { return Action::None }
 
     let mut action = Action::None;
@@ -155,6 +157,11 @@ impl<'a> Gui<'a> {
           .wrap_by_word()
           .set(self.ids.help_text, ui);
 
+      Text::new(&format!("Quality: {}", quality.level))
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 25.0)
+          .set(self.ids.quality_text, ui);
+
       if Button::new()
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
@@ -170,7 +177,7 @@ impl<'a> Gui<'a> {
         action = Action::Resume;
       }
 
-      if let Some(scale) = Slider::new(self.resolution_scale as f64, 1.0, 20.0)
+      if let Some(weight) = Slider::new(quality.weight_resolution, 0.0, 1.0)
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
           .color(if self.selected_widget == 1 {
@@ -178,18 +185,32 @@ impl<'a> Gui<'a> {
             } else {
               slider_default_color
             })
-          .label(&format!("Resolution: {}", self.resolution_scale))
+          .label(&format!("Resolution weight: {}", quality.weight_resolution))
           .small_font(ui)
           .set(self.ids.resolution_slider, ui) {
-        self.resolution_scale = scale as u32;
+        quality.weight_resolution = weight;
         self.selected_widget = 1;
-        action = Action::ChangeResolution(scale as u32);
+      }
+
+      if let Some(weight) = Slider::new(quality.weight_msaa, 0.0, 1.0)
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 25.0)
+          .color(if self.selected_widget == 2 {
+              slider_focussed_color
+            } else {
+              slider_default_color
+            })
+          .label(&format!("Anti-aliasing weight: {}", quality.weight_msaa))
+          .small_font(ui)
+          .set(self.ids.msaa_slider, ui) {
+        quality.weight_msaa = weight;
+        self.selected_widget = 2;
       }
 
       if Button::new()
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
-          .with_style(if self.selected_widget == 2 {
+          .with_style(if self.selected_widget == 3 {
               button_focussed_style
             } else {
               button_default_style
@@ -197,12 +218,12 @@ impl<'a> Gui<'a> {
           .label("Quit [Q]")
           .set(self.ids.quit_button, ui)
           .was_clicked() {
-        self.selected_widget = 2;
+        self.selected_widget = 3;
         action = Action::Quit;
       }
     }
 
-    // Render the `Ui` and then display it on the screen.
+    // Render the UI and draw it to a texture
     let primitives = self.ui.draw();
     self.renderer.fill(self.display, primitives, &self.image_map);
 

@@ -34,6 +34,7 @@ mod math;
 mod mesh;
 mod object;
 mod performance;
+mod quality;
 mod teapot;
 mod uniforms;
 
@@ -86,6 +87,7 @@ use material::Material;
 use mesh::Mesh;
 use object::Object;
 use performance::FramePerformance;
+use quality::Quality;
 
 fn load_texture(context: &Facade, name: &Path) -> SrgbTexture2d {
   let image = image::open(name)
@@ -167,7 +169,7 @@ fn main() {
       render_dimensions.0 * 4,
       render_dimensions.1 * 2);
 
-  canvas.set_resolution_scale(10);
+  canvas.set_resolution_scale(0.5);
 
   let render_program = Program::from_source(
       &display,
@@ -352,6 +354,8 @@ fn main() {
 
   let mut frame_performance = FramePerformance::new();
 
+  let mut quality = Quality::new();
+
   loop {
     frame_performance.process_frame_start();
 
@@ -394,7 +398,7 @@ fn main() {
 
     let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
 
-    action = gui.prepare();
+    action = gui.prepare(&mut quality);
 
     {
       let eyes = [
@@ -463,8 +467,9 @@ fn main() {
       target.finish().unwrap();
     }
 
+    canvas.set_resolution_scale(quality.weight_resolution);
+
     match action {
-      Action::ChangeResolution(scale) => canvas.set_resolution_scale(scale),
       Action::Quit => return,
       Action::Resume => {
         gui.is_visible = false;
@@ -542,8 +547,6 @@ fn main() {
                 },
                 Some(VirtualKeyCode::Equals)    => if key_is_pressed { frame_performance.reduce_fps() },
                 Some(VirtualKeyCode::Minus)     => if key_is_pressed { frame_performance.increase_fps() },
-                Some(VirtualKeyCode::PageDown)  => if key_is_pressed { canvas.decrease_resolution() },
-                Some(VirtualKeyCode::PageUp)    => if key_is_pressed { canvas.increase_resolution() },
 
                 // activate while key is pressed
                 Some(VirtualKeyCode::W) => fps_camera.forward = key_is_pressed,
