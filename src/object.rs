@@ -62,15 +62,13 @@ impl Object {
     let executable_path = Path::new(&executable_string).parent().unwrap();
     let project_path = executable_path.parent().unwrap().parent().unwrap();
 
-    let mut objects = Vec::<Object>::new();
-    let mut materials = Vec::<Material>::new();
+    let mut objects = Vec::new();
+    let mut materials = Vec::new();
 
     let obj_file = Path::new(filename);
     let obj_path = obj_file.parent().unwrap();
 
     let (objs, mtls) = tobj::load_obj(&obj_file).unwrap(); // TODO: propagate error
-
-    let mut materials = Vec::new();
 
     for mtl in mtls {
       let texture_filename = mtl.diffuse_texture.replace("\\", &MAIN_SEPARATOR.to_string());

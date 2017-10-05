@@ -165,11 +165,4 @@ impl Geometry {
         ]).unwrap(),
     }
   }
-
-  pub fn borrow_indices<'a>(&'a self) -> Result<&'a IndexBuffer<u32>, &str> {
-    match self.indices {
-      Some(ref x) => Ok(x),
-      None => Err("Nope"),
-    }
-  }
 }

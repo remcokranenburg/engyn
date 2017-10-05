@@ -40,8 +40,6 @@ pub struct AdaptiveCanvas {
   depth_buffer: DepthRenderBuffer,
   max_width: u32,
   max_height: u32,
-  step_width: u32,
-  step_height: u32,
 }
 
 impl<'a> AdaptiveCanvas {
@@ -78,8 +76,6 @@ impl<'a> AdaptiveCanvas {
       depth_buffer: depth_buffer,
       max_width: max_width,
       max_height: max_height,
-      step_width: (max_width as f32 * 0.05) as u32,
-      step_height: (max_height as f32 * 0.05) as u32,
     }
   }
 

@@ -16,18 +16,21 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 pub struct Quality {
-  pub level: f32,
-  pub weight_resolution: f32,
-  pub weight_msaa: f32,
+  pub level: Rc<RefCell<f32>>,
+  pub weight_resolution: Rc<RefCell<f32>>,
+  pub weight_msaa: Rc<RefCell<f32>>,
 }
 
 impl Quality {
   pub fn new() -> Quality {
     Quality {
-      level: 1.0,
-      weight_resolution: 0.5,
-      weight_msaa: 0.5,
+      level: Rc::new(RefCell::new(1.0)),
+      weight_resolution: Rc::new(RefCell::new(0.5)),
+      weight_msaa: Rc::new(RefCell::new(0.5)),
     }
   }
 }

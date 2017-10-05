@@ -46,12 +46,14 @@ use glium::Rect;
 use glium::Surface;
 use glium::texture::Texture2d;
 use glium::uniforms::MagnifySamplerFilter;
+use std::cell::RefCell;
 use std::env;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::Duration;
+use std::f32;
 
 use adaptive_canvas::AdaptiveCanvas;
-use quality::Quality;
 
 widget_ids! {
   pub struct Ids {
@@ -66,10 +68,16 @@ widget_ids! {
   }
 }
 
+#[derive(Clone, Copy)]
 pub enum Action {
   Quit,
   Resume,
   None,
+}
+
+struct GuiElement {
+  action: Action,
+  weight: Rc<RefCell<f32>>,
 }
 
 pub struct Gui<'a> {
@@ -81,12 +89,13 @@ pub struct Gui<'a> {
   image_map: Map<Texture2d>,
   renderer: Renderer,
   ui: Ui,
-  selected_widget: u32,
-  resolution_scale: u32,
+  selected_widget: usize,
+  widgets: Vec<GuiElement>,
 }
 
 impl<'a> Gui<'a> {
-  pub fn new(display: &'a Display, width: f64, height: f64) -> Gui {
+  pub fn new(display: &'a Display, weight_resolution: Rc<RefCell<f32>>,
+      weight_msaa: Rc<RefCell<f32>>) -> Gui<'a> {
     // TODO: put this in a 'system integration' module
     let executable_string = env::args().nth(0).unwrap();
     let executable_path = Path::new(&executable_string).parent().unwrap();
@@ -124,11 +133,16 @@ impl<'a> Gui<'a> {
       renderer: Renderer::new(display).unwrap(),
       ui: ui,
       selected_widget: 0,
-      resolution_scale: 10,
+      widgets: vec![
+        GuiElement { action: Action::Resume, weight: Rc::new(RefCell::new(0.0)) },
+        GuiElement { action: Action::None, weight: weight_resolution },
+        GuiElement { action: Action::None, weight: weight_msaa },
+        GuiElement { action: Action::Quit, weight: Rc::new(RefCell::new(0.0)) },
+      ],
     }
   }
 
-  pub fn prepare(&mut self, quality: &mut Quality) -> Action {
+  pub fn prepare(&mut self, quality_level: f32) -> Action {
     if !self.is_visible { return Action::None }
 
     let mut action = Action::None;
@@ -157,7 +171,7 @@ impl<'a> Gui<'a> {
           .wrap_by_word()
           .set(self.ids.help_text, ui);
 
-      Text::new(&format!("Quality: {}", quality.level))
+      Text::new(&format!("Quality: {}", quality_level))
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
           .set(self.ids.quality_text, ui);
@@ -174,10 +188,13 @@ impl<'a> Gui<'a> {
           .set(self.ids.resume_button, ui)
           .was_clicked() {
         self.selected_widget = 0;
-        action = Action::Resume;
+        action = self.widgets[0].action;
       }
 
-      if let Some(weight) = Slider::new(quality.weight_resolution, 0.0, 1.0)
+      let resolution_weight_ref = Rc::clone(&self.widgets[1].weight);
+      let resolution_weight = *resolution_weight_ref.borrow();
+
+      if let Some(weight) = Slider::new(resolution_weight, 0.0, 1.0)
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
           .color(if self.selected_widget == 1 {
@@ -185,14 +202,17 @@ impl<'a> Gui<'a> {
             } else {
               slider_default_color
             })
-          .label(&format!("Resolution weight: {}", quality.weight_resolution))
+          .label(&format!("Resolution weight: {}", resolution_weight))
           .small_font(ui)
           .set(self.ids.resolution_slider, ui) {
-        quality.weight_resolution = weight;
+        *resolution_weight_ref.borrow_mut() = weight;
         self.selected_widget = 1;
       }
 
-      if let Some(weight) = Slider::new(quality.weight_msaa, 0.0, 1.0)
+      let msaa_weight_ref = Rc::clone(&self.widgets[2].weight);
+      let msaa_weight = *msaa_weight_ref.borrow();
+
+      if let Some(weight) = Slider::new(msaa_weight, 0.0, 1.0)
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
           .color(if self.selected_widget == 2 {
@@ -200,10 +220,10 @@ impl<'a> Gui<'a> {
             } else {
               slider_default_color
             })
-          .label(&format!("Anti-aliasing weight: {}", quality.weight_msaa))
+          .label(&format!("Anti-aliasing weight: {}", msaa_weight))
           .small_font(ui)
           .set(self.ids.msaa_slider, ui) {
-        quality.weight_msaa = weight;
+        *msaa_weight_ref.borrow_mut() = weight;
         self.selected_widget = 2;
       }
 
@@ -258,11 +278,43 @@ impl<'a> Gui<'a> {
       height: gui_height as i32,
     };
 
-    let mut framebuffer = self.canvas.get_framebuffer(self.display).unwrap();
+    let framebuffer = self.canvas.get_framebuffer(self.display).unwrap();
     framebuffer.blit_color(&src_rect, target, &blit_target, MagnifySamplerFilter::Linear);
   }
 
   pub fn handle_event(&mut self, event: Input) {
     self.ui.handle_event(event);
+  }
+
+  pub fn select_previous(&mut self) {
+    if self.selected_widget == 0 {
+      self.selected_widget = self.widgets.len() - 1;
+    } else {
+      self.selected_widget -= 1;
+    }
+  }
+
+  pub fn select_next(&mut self) {
+    if self.selected_widget == self.widgets.len() - 1 {
+      self.selected_widget = 0;
+    } else {
+      self.selected_widget += 1;
+    }
+  }
+
+  pub fn decrease_slider(&mut self) {
+    let weight = Rc::clone(&self.widgets[self.selected_widget].weight);
+    let original_weight = *weight.borrow();
+    *weight.borrow_mut() = f32::max(original_weight - 0.01, 0.0);
+  }
+
+  pub fn increase_slider(&mut self) {
+    let weight = Rc::clone(&self.widgets[self.selected_widget].weight);
+    let original_weight = *weight.borrow();
+    *weight.borrow_mut() = f32::min(original_weight + 0.01, 1.0);
+  }
+
+  pub fn activate(&mut self) -> Action {
+    self.widgets[self.selected_widget].action
   }
 }

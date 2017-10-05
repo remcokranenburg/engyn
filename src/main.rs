@@ -98,8 +98,6 @@ fn load_texture(context: &Facade, name: &Path) -> SrgbTexture2d {
 }
 
 fn main() {
-  let args: Vec<_> = env::args().collect();
-
   let mut vr = VRServiceManager::new();
   vr.register_defaults();
   vr.initialize_services();
@@ -349,19 +347,18 @@ fn main() {
     });
   }
 
-  let (width, height) = window.get_inner_size_pixels().unwrap();
-  let mut gui = Gui::new(&display, width as f64, height as f64);
-
+  let quality = Quality::new();
+  let mut gui = Gui::new(&display, Rc::clone(&quality.weight_resolution),
+      Rc::clone(&quality.weight_msaa));
   let mut frame_performance = FramePerformance::new();
 
-  let mut quality = Quality::new();
 
   loop {
     frame_performance.process_frame_start();
 
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
-    let mut action = Action::None;
+    let mut action;
 
     let (
         standing_transform,
@@ -401,7 +398,7 @@ fn main() {
 
     let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
 
-    action = gui.prepare(&mut quality);
+    action = gui.prepare(*quality.level.borrow());
 
     {
       let eyes = [
@@ -470,24 +467,7 @@ fn main() {
       target.finish().unwrap();
     }
 
-    canvas.set_resolution_scale(quality.weight_resolution);
-
-    match action {
-      Action::Quit => return,
-      Action::Resume => {
-        gui.is_visible = false;
-
-        if !vr_mode {
-          let (width, height) = window.get_inner_size_pixels().unwrap();
-          let origin_x = (width / 2) as i32;
-          let origin_y = (height / 2) as i32;
-          window.set_cursor_position(origin_x, origin_y).unwrap();
-          window.set_cursor(MouseCursor::NoneCursor);
-          window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
-        }
-      },
-      Action::None => (),
-    }
+    canvas.set_resolution_scale(*quality.weight_resolution.borrow());
 
     // once every 100 frames, check for VR events
     event_counter += 1;
@@ -548,6 +528,19 @@ fn main() {
                         .expect("Could not grab mouse cursor");
                   }
                 },
+                Some(VirtualKeyCode::Up)        => if key_is_pressed { gui.select_previous() },
+                Some(VirtualKeyCode::Down)      => if key_is_pressed { gui.select_next() },
+                Some(VirtualKeyCode::Left)      => if key_is_pressed { gui.decrease_slider() },
+                Some(VirtualKeyCode::Right)     => if key_is_pressed { gui.increase_slider() },
+                Some(VirtualKeyCode::Return)    => if key_is_pressed {
+                  let tmp_action = gui.activate();
+
+                  match tmp_action {
+                    Action::None => (),
+                    _ => action = tmp_action,
+                  }
+                },
+
                 Some(VirtualKeyCode::Equals)    => if key_is_pressed { frame_performance.reduce_fps() },
                 Some(VirtualKeyCode::Minus)     => if key_is_pressed { frame_performance.increase_fps() },
 
@@ -579,6 +572,23 @@ fn main() {
         _ => (),
       };
     });
+
+    match action {
+      Action::Quit => return,
+      Action::Resume => {
+        gui.is_visible = false;
+
+        if !vr_mode {
+          let (width, height) = window.get_inner_size_pixels().unwrap();
+          let origin_x = (width / 2) as i32;
+          let origin_y = (height / 2) as i32;
+          window.set_cursor_position(origin_x, origin_y).unwrap();
+          window.set_cursor(MouseCursor::NoneCursor);
+          window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
+        }
+      },
+      Action::None => (),
+    }
 
     frame_performance.process_frame_end(vr_mode);
 
