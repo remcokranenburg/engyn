@@ -47,6 +47,7 @@ use glium::Surface;
 use glium::texture::Texture2d;
 use glium::uniforms::MagnifySamplerFilter;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::rc::Rc;
@@ -91,6 +92,7 @@ pub struct Gui<'a> {
   ui: Ui,
   selected_widget: usize,
   widgets: Vec<GuiElement>,
+  widget_order: HashMap<String, usize>,
 }
 
 impl<'a> Gui<'a> {
@@ -139,6 +141,12 @@ impl<'a> Gui<'a> {
         GuiElement { action: Action::None, weight: weight_msaa },
         GuiElement { action: Action::Quit, weight: Rc::new(RefCell::new(0.0)) },
       ],
+      widget_order: [
+        ("Resume".to_owned(), 0),
+        ("Resolution".to_owned(), 1),
+        ("MSAA".to_owned(), 2),
+        ("Quit".to_owned(), 3),
+      ].iter().cloned().collect(),
     }
   }
 
@@ -176,10 +184,12 @@ impl<'a> Gui<'a> {
           .padded_w_of(self.ids.container, 25.0)
           .set(self.ids.quality_text, ui);
 
+      let resume_index = *self.widget_order.get("Resume").unwrap();
+
       if Button::new()
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
-          .with_style(if self.selected_widget == 0 {
+          .with_style(if self.selected_widget == resume_index {
               button_focussed_style
             } else {
               button_default_style
@@ -187,17 +197,18 @@ impl<'a> Gui<'a> {
           .label("Resume [Escape]")
           .set(self.ids.resume_button, ui)
           .was_clicked() {
-        self.selected_widget = 0;
-        action = self.widgets[0].action;
+        self.selected_widget = resume_index;
+        action = self.widgets[resume_index].action;
       }
 
-      let resolution_weight_ref = Rc::clone(&self.widgets[1].weight);
+      let resolution_index = *self.widget_order.get("Resolution").unwrap();
+      let resolution_weight_ref = Rc::clone(&self.widgets[resolution_index].weight);
       let resolution_weight = *resolution_weight_ref.borrow();
 
       if let Some(weight) = Slider::new(resolution_weight, 0.0, 1.0)
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
-          .color(if self.selected_widget == 1 {
+          .color(if self.selected_widget == resolution_index {
               slider_focussed_color
             } else {
               slider_default_color
@@ -206,16 +217,17 @@ impl<'a> Gui<'a> {
           .small_font(ui)
           .set(self.ids.resolution_slider, ui) {
         *resolution_weight_ref.borrow_mut() = weight;
-        self.selected_widget = 1;
+        self.selected_widget = resolution_index;
       }
 
-      let msaa_weight_ref = Rc::clone(&self.widgets[2].weight);
+      let msaa_index = *self.widget_order.get("MSAA").unwrap();
+      let msaa_weight_ref = Rc::clone(&self.widgets[msaa_index].weight);
       let msaa_weight = *msaa_weight_ref.borrow();
 
       if let Some(weight) = Slider::new(msaa_weight, 0.0, 1.0)
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
-          .color(if self.selected_widget == 2 {
+          .color(if self.selected_widget == msaa_index {
               slider_focussed_color
             } else {
               slider_default_color
@@ -224,13 +236,15 @@ impl<'a> Gui<'a> {
           .small_font(ui)
           .set(self.ids.msaa_slider, ui) {
         *msaa_weight_ref.borrow_mut() = weight;
-        self.selected_widget = 2;
+        self.selected_widget = msaa_index;
       }
+
+      let quit_index = *self.widget_order.get("Quit").unwrap();
 
       if Button::new()
           .parent(self.ids.container)
           .padded_w_of(self.ids.container, 25.0)
-          .with_style(if self.selected_widget == 3 {
+          .with_style(if self.selected_widget == quit_index {
               button_focussed_style
             } else {
               button_default_style
@@ -238,7 +252,7 @@ impl<'a> Gui<'a> {
           .label("Quit [Q]")
           .set(self.ids.quit_button, ui)
           .was_clicked() {
-        self.selected_widget = 3;
+        self.selected_widget = quit_index;
         action = Action::Quit;
       }
     }
