@@ -275,6 +275,8 @@ impl<'a> Gui<'a> {
   pub fn draw<S>(&mut self, target: &mut S, viewport: Rect) where S: Surface {
     if !self.is_visible { return; }
 
+    let left = viewport.left == 0;
+
     let src_rect = Rect {
       left: 0,
       bottom: 0,
@@ -285,11 +287,20 @@ impl<'a> Gui<'a> {
     let gui_width = viewport.width as f64 * 0.4;
     let gui_height = viewport.height as f64 * 0.4;
 
-    let blit_target = BlitTarget {
-      left: viewport.left + viewport.width / 2 - (gui_width * 0.5) as u32,
-      bottom: viewport.bottom + viewport.height / 2 - (gui_height * 0.5) as u32,
-      width: gui_width as i32,
-      height: gui_height as i32,
+    let blit_target = if left {
+      BlitTarget {
+        left: viewport.left + viewport.width / 2 - (gui_width * 0.4) as u32 + viewport.width / 10,
+        bottom: viewport.bottom + viewport.height / 2 - (gui_height * 0.4) as u32 - viewport.height / 12,
+        width: gui_width as i32,
+        height: gui_height as i32,
+      }
+    } else {
+      BlitTarget {
+        left: viewport.left + viewport.width / 2 - (gui_width * 0.4) as u32 - viewport.width / 10,
+        bottom: viewport.bottom + viewport.height / 2 - (gui_height * 0.4) as u32 - viewport.height / 12,
+        width: gui_width as i32,
+        height: gui_height as i32,
+      }
     };
 
     let framebuffer = self.canvas.get_framebuffer(self.display).unwrap();
