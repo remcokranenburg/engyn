@@ -331,6 +331,9 @@ fn main() {
 
   // create a model for each gamepad
   let gamepads = vr.get_gamepads();
+  let mut grip_button_was_pressed = [false, false];
+  let mut menu_button_was_pressed = [false, false];
+  let mut trigger_button_was_pressed = [false, false];
   let mut gamepad_models = Vec::new();
 
   println!("Found {} controller{}!", gamepads.len(), match gamepads.len() { 1 => "", _ => "s" });
@@ -421,18 +424,54 @@ fn main() {
         }
 
         for (i, ref gamepad) in gamepads.iter().enumerate() {
-          let pose = gamepad.borrow().state().pose;
-          let rotation = match pose.orientation {
+          let state = gamepad.borrow().state();
+          let rotation = match state.pose.orientation {
             Some(o) => Matrix4::from(Quaternion::new(o[3], o[0], o[1], o[2])), // WebVR presents quaternions as (x, y, z, w)
             None => Matrix4::<f32>::identity(),
           };
-          let position = match pose.position {
+          let position = match state.pose.position {
             Some(position) => Matrix4::from_translation(Vector3::from(position)),
             None => Matrix4::<f32>::identity(),
           };
 
           gamepad_models[i].transform = inverse_standing_transform * position * rotation;
           gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+
+          // handle gamepad input
+
+          if state.buttons[0].pressed {
+            grip_button_was_pressed[i] = true;
+          } else if grip_button_was_pressed[i] {
+            grip_button_was_pressed[i] = false;
+            println!("grip button clicked");
+            gui.select_next();
+          }
+
+          if state.buttons[1].pressed {
+            menu_button_was_pressed[i] = true;
+          } else if menu_button_was_pressed[i] {
+            menu_button_was_pressed[i] = false;
+            println!("menu button clicked");
+            gui.is_visible = !gui.is_visible;
+          }
+
+          if state.axes[2] == 1.0 {
+            trigger_button_was_pressed[i] = true;
+          } else if trigger_button_was_pressed[i] {
+            trigger_button_was_pressed[i] = false;
+            println!("trigger button clicked");
+            let tmp_action = gui.activate();
+
+            match tmp_action {
+              Action::None => (),
+              _ => action = tmp_action,
+            }
+          }
+
+          if state.axes[0] > 0.0 {
+            let weight_ref = Rc::clone(&gui.widgets[gui.selected_widget].weight);
+            *weight_ref.borrow_mut() = state.axes[0] as f32;
+          }
         }
 
         gui.draw(&mut framebuffer, viewport);

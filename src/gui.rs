@@ -76,13 +76,15 @@ pub enum Action {
   None,
 }
 
-struct GuiElement {
-  action: Action,
-  weight: Rc<RefCell<f32>>,
+pub struct GuiElement {
+  pub action: Action,
+  pub weight: Rc<RefCell<f32>>,
 }
 
 pub struct Gui<'a> {
   pub is_visible: bool,
+  pub widgets: Vec<GuiElement>,
+  pub selected_widget: usize,
 
   canvas: AdaptiveCanvas,
   display: &'a Display,
@@ -90,8 +92,6 @@ pub struct Gui<'a> {
   image_map: Map<Texture2d>,
   renderer: Renderer,
   ui: Ui,
-  selected_widget: usize,
-  widgets: Vec<GuiElement>,
   widget_order: HashMap<String, usize>,
 }
 
@@ -127,13 +127,6 @@ impl<'a> Gui<'a> {
 
     Gui {
       is_visible: false,
-
-      canvas: AdaptiveCanvas::new(display, 768, 960),
-      display: display,
-      ids: Ids::new(ui.widget_id_generator()),
-      image_map: Map::<Texture2d>::new(),
-      renderer: Renderer::new(display).unwrap(),
-      ui: ui,
       selected_widget: 0,
       widgets: vec![
         GuiElement { action: Action::Resume, weight: Rc::new(RefCell::new(0.0)) },
@@ -141,6 +134,13 @@ impl<'a> Gui<'a> {
         GuiElement { action: Action::None, weight: weight_msaa },
         GuiElement { action: Action::Quit, weight: Rc::new(RefCell::new(0.0)) },
       ],
+
+      canvas: AdaptiveCanvas::new(display, 768, 960),
+      display: display,
+      ids: Ids::new(ui.widget_id_generator()),
+      image_map: Map::<Texture2d>::new(),
+      renderer: Renderer::new(display).unwrap(),
+      ui: ui,
       widget_order: [
         ("Resume".to_owned(), 0),
         ("Resolution".to_owned(), 1),
