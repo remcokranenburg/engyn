@@ -19,22 +19,19 @@
 use std::time::Duration;
 use std::time::Instant;
 use std::thread;
+use std::fmt::Write;
 
 // these target frame times will cause vsync misses so it hits the desired frame rate
-const TARGET_FRAME_TIMES: [u32; 4] = [
-    11_000_000u32,  // 11ms target for 90fps
-    22_000_000u32,  // 22ms target for 45fps
-    33_000_000u32,  // 33ms target for 30fps
-    66_000_000u32,  // 66ms target for 15fps
+const TARGET_FRAME_TIMES: [u32; 5] = [
+    13_300_000u32,  // target for 90fps
+    20_000_000u32,  // target for 60fps
+    25_000_000u32,  // target for 45fps
+    40_000_000u32,  // target for 30fps
+    77_000_000u32,  // target for 15fps
 ];
 
-fn duration_as_millis(duration: Duration) -> f64 {
-  ((duration.as_secs() * 1000) as f64) + (duration.subsec_nanos() as f64 / 1_000_000f64)
-}
-
 pub struct FramePerformance {
-  time_last_frame: Instant,
-  time_last_update: Instant,
+  log: Vec<(u32, f32)>,
   time_frame_start: Instant,
   frame_count: i32,
   current_fps_target: usize,
@@ -43,8 +40,7 @@ pub struct FramePerformance {
 impl FramePerformance {
   pub fn new() -> FramePerformance {
     FramePerformance {
-      time_last_frame: Instant::now(),
-      time_last_update: Instant::now(),
+      log: Vec::new(),
       time_frame_start: Instant::now(),
       frame_count: 0,
       current_fps_target: 0,
@@ -70,30 +66,26 @@ impl FramePerformance {
       self.time_frame_start = Instant::now();
   }
 
-  pub fn process_frame_end(&mut self, vr_mode: bool) {
-    let sum_frame_time = self.time_frame_start.duration_since(self.time_last_update);
+  pub fn process_frame_end(&mut self, vr_mode: bool, quality: f32) -> bool {
     let current_frame_time = Instant::now().duration_since(self.time_frame_start);
-
-    if sum_frame_time >= Duration::new(1, 0) {
-      let sum_frame_time_as_millis = duration_as_millis(sum_frame_time);
-      let fps = self.frame_count as f64 / (sum_frame_time_as_millis / 1000f64);
-      let frame_time = sum_frame_time_as_millis / self.frame_count as f64;
-      let target_num_frames = if vr_mode { 90 } else { 60 };
-      println!("Avg FPS: {} ({}ms), dropped {} frames, Avg drawing time: {}ms",
-          fps,
-          frame_time,
-          target_num_frames - self.frame_count,
-          duration_as_millis(current_frame_time));
-      self.frame_count = 0;
-      self.time_last_update = self.time_frame_start;
-    }
-
     let target_frame_time = Duration::new(0, TARGET_FRAME_TIMES[self.current_fps_target]);
 
     if self.current_fps_target > 0 && current_frame_time < target_frame_time {
       thread::sleep(target_frame_time - current_frame_time);
     }
 
-    self.time_last_frame = self.time_frame_start;
+    self.log.push((
+        current_frame_time.subsec_nanos(),
+        quality));
+    current_frame_time > Duration::new(0, TARGET_FRAME_TIMES[if vr_mode { 0 } else { 2 }])
+  }
+
+  pub fn to_csv(&self) -> String {
+    let mut log_csv = String::from("Frame,FPS,Quality\n");
+    for (i, frame) in self.log.iter().enumerate() {
+      let fps = 1_000_000_000f64 / (frame.0 as f64);
+      write!(&mut log_csv, "{},{},{}\n", i, fps, frame.1).unwrap();
+    }
+    log_csv
   }
 }

@@ -216,17 +216,20 @@ impl Object {
   }
 
 
-  pub fn draw<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      program: &Program, render_params: &DrawParameters, num_lights: i32, lights: [Light; 32])
+  pub fn draw<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
+      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], program: &Program,
+      render_params: &DrawParameters, num_lights: i32, lights: [Light; 32]) -> u32
       where S: Surface {
     let root = Matrix4::<f32>::identity();
-    self.draw_recurse(target, projection, view, root, program, render_params, num_lights, lights);
+    self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, program,
+        render_params, num_lights, lights)
   }
 
 
-  fn draw_recurse<S>(&mut self, target: &mut S, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      group: Matrix4<f32>, program: &Program, render_params: &DrawParameters, num_lights: i32,
-      lights: [Light; 32]) where S: Surface {
+  fn draw_recurse<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
+      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>, program: &Program,
+      render_params: &DrawParameters, num_lights: i32, lights: [Light; 32]) -> u32
+      where S: Surface {
     let model_transform = group * self.transform;
 
     match self.mesh {
@@ -261,9 +264,13 @@ impl Object {
       None => (),
     }
 
+    let mut result = i + 1;
     for object in &mut self.children {
-      object.draw_recurse(target, projection, view, model_transform, program, render_params,
-          num_lights, lights);
+      if quality_level > (result as f32 / num_objects as f32) {
+        result = object.draw_recurse(quality_level, result, num_objects, target, projection, view,
+            model_transform, program, render_params, num_lights, lights);
+      }
     }
+    result
   }
 }

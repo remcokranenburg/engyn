@@ -71,6 +71,8 @@ use glium::vertex::VertexBuffer;
 use std::env;
 use std::path::Path;
 use std::f32;
+use std::fs::File;
+use std::io::prelude::*;
 use std::rc::Rc;
 use webvr::VREvent;
 use webvr::VRDisplayEvent;
@@ -95,6 +97,10 @@ fn load_texture(context: &Facade, name: &Path) -> SrgbTexture2d {
   let image_dimensions = image.dimensions();
   let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
   SrgbTexture2d::new(context, image).unwrap()
+}
+
+fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
+  objects.iter().fold(0, |acc, o| acc + 1 + calculate_num_objects(&o.children))
 }
 
 fn main() {
@@ -307,9 +313,11 @@ fn main() {
     world.push(my_teapot);
   }
 
+  let num_objects = calculate_num_objects(&world);
+
   // empty texture to force glutin clean
-  world.push(Object::new_plane(&display, Rc::clone(&empty_material), [0.0001,0.0001], [-0.1, 0.1, 0.0],
-      [0.0, 0.0, 0.0], [-1.0,1.0,1.0]));
+  let mut empty = Object::new_plane(&display, Rc::clone(&empty_material), [0.0001,0.0001],
+      [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
 
   // add a light
 
@@ -419,9 +427,15 @@ fn main() {
 
         render_params.viewport = Some(viewport);
 
-        for object in &mut world {
-          object.draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+        let mut i = 0;
+        let quality_level = *quality.level.borrow();
+        for object in world.iter_mut() {
+          if quality_level > (i as f32 / num_objects as f32) {
+            i = object.draw(quality_level, i, num_objects, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+          }
         }
+
+        empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
 
         for (i, ref gamepad) in gamepads.iter().enumerate() {
           let state = gamepad.borrow().state();
@@ -435,7 +449,7 @@ fn main() {
           };
 
           gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-          gamepad_models[i].draw(&mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+          gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
 
           // handle gamepad input
 
@@ -505,8 +519,6 @@ fn main() {
 
       target.finish().unwrap();
     }
-
-    canvas.set_resolution_scale(*quality.weight_resolution.borrow());
 
     // once every 100 frames, check for VR events
     event_counter += 1;
@@ -629,9 +641,16 @@ fn main() {
       Action::None => (),
     }
 
-    frame_performance.process_frame_end(vr_mode);
+    let has_framedrops = frame_performance.process_frame_end(vr_mode, *quality.level.borrow());
+
+    quality.set_level(has_framedrops);
+    canvas.set_resolution_scale(quality.get_target_resolution());
+    //canvas.set_msaa_level(quality.get_target_msaa());
 
     if is_done {
+      let csv = frame_performance.to_csv();
+      let mut file = File::create("performance.csv").unwrap();
+      file.write_all(csv.as_bytes()).unwrap();
       return;
     }
   }

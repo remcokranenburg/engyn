@@ -18,6 +18,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::f32;
 
 pub struct Quality {
   pub level: Rc<RefCell<f32>>,
@@ -32,5 +33,26 @@ impl Quality {
       weight_resolution: Rc::new(RefCell::new(0.5)),
       weight_msaa: Rc::new(RefCell::new(0.5)),
     }
+  }
+
+  pub fn set_level(&self, missed_frame: bool) {
+    // TODO: come up with a better frame time control mechanism
+
+    let original_level = *self.level.borrow();
+
+    if missed_frame {
+      *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.01);
+    } else {
+      *self.level.borrow_mut() = f32::min(original_level * 1.01, 1.0);
+    }
+  }
+
+  pub fn get_target_resolution(&self) -> f32 {
+    // TODO: do actual calculation here
+    *self.level.borrow()
+  }
+
+  pub fn get_target_msaa() -> f32 {
+    0.0
   }
 }
