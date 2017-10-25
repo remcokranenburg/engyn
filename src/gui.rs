@@ -135,7 +135,7 @@ impl<'a> Gui<'a> {
         GuiElement { action: Action::Quit, weight: Rc::new(RefCell::new(0.0)) },
       ],
 
-      canvas: AdaptiveCanvas::new(display, 768, 960),
+      canvas: AdaptiveCanvas::new(display, 768, 960, 0),
       display: display,
       ids: Ids::new(ui.widget_id_generator()),
       image_map: Map::<Texture2d>::new(),

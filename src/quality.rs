@@ -52,7 +52,7 @@ impl Quality {
     *self.level.borrow()
   }
 
-  pub fn get_target_msaa() -> f32 {
-    0.0
+  pub fn get_target_msaa(&self) -> f32 {
+    *self.level.borrow()
   }
 }

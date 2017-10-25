@@ -175,7 +175,8 @@ fn main() {
   let mut canvas = AdaptiveCanvas::new(
       &display,
       render_dimensions.0 * 4,
-      render_dimensions.1 * 2);
+      render_dimensions.1 * 2,
+      0);
 
   canvas.set_resolution_scale(0.5);
 
@@ -505,7 +506,7 @@ fn main() {
       }
 
       if vr_mode {
-        vr_display.unwrap().borrow_mut().submit_frame(&canvas.layer);
+        vr_display.unwrap().borrow_mut().submit_frame(canvas.get_layer());
       }
 
       // now draw the canvas as a texture to the window
@@ -660,7 +661,7 @@ fn main() {
 
     quality.set_level(has_framedrops);
     canvas.set_resolution_scale(quality.get_target_resolution());
-    //canvas.set_msaa_level(quality.get_target_msaa());
+    canvas.set_msaa_scale(quality.get_target_msaa());
 
     if is_done {
       let csv = frame_performance.to_csv();
