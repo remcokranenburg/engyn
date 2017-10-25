@@ -1,34 +1,34 @@
 # Engyn
 
-Engyn will be an experimental VR graphics engine, designed to automatically tune its quality to
-reach a target frame rate. To this end, every graphical feature will be highly configurable and
-detailed performance breakdowns will be generated that can be used to decide how to tune the
-algorithms.
+Engyn is an experimental VR graphics engine, designed to automatically tune its quality to reach a
+target frame rate. To this end, every graphical feature will be highly configurable and detailed
+performance breakdowns will be generated that can be used to decide how to tune the algorithms.
 
 Currently, you can walk around in a simple static environment with basic dynamic lighting. In
-VR-mode, your controllers are visible. In regular mode, the text "Hello, world!" is drawn on top in
-the middle of the screen.
+VR-mode, your controllers are visible. Auto-tuning is currently available for resolution and LOD.
+The LOD algorithm is currently a simple hack that reduces the number of objects drawn. A real LOD
+algorithm would simplify the objects.
 
 ## How do I run this?
 
 1. This program is written in Rust. You will need the latest nightly release, which can be obtained
     with [Rustup](https://rustup.rs/). If you're on Windows and you want VR support, choose the MSVC
-    variant when you're installing Rust from Rustup.
+    variant when you're installing Rust from Rustup. [More information about Windows](https://github.com/rust-lang-nursery/rustup.rs#working-with-rust-on-windows)
 
 2. Then, in the root of the project run the following:
 
     ```
-    cargo build
+    cargo build --release
     ```
 
 3. Optional: if you want VR support, you'll need to [click here][dll] to download openvr_api.dll
-   from Valve's repository and put it next to the `engyn.exe` binary in the `target/debug/`
+   from Valve's repository and put it next to the `engyn.exe` binary in the `target/release/`
    directory.
 
 4. Now you can run the program, like so:
 
     ```
-    cargo run
+    cargo run --release
     ```
 
 ## Troubleshooting
