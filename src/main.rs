@@ -19,6 +19,7 @@
 #[macro_use] extern crate glium;
 extern crate image;
 extern crate cgmath;
+extern crate chrono;
 #[macro_use] extern crate conrod;
 extern crate rand;
 extern crate rust_webvr as webvr;
@@ -45,6 +46,7 @@ use cgmath::Rad;
 use cgmath::SquareMatrix;
 use cgmath::Transform;
 use cgmath::Vector3;
+use chrono::Utc;
 use glium::Depth;
 use glium::DepthTest;
 use glium::Display;
@@ -649,7 +651,8 @@ fn main() {
 
     if is_done {
       let csv = frame_performance.to_csv();
-      let mut file = File::create("performance.csv").unwrap();
+      let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
+      let mut file = File::create(format!("performance/{}.csv", now)).unwrap();
       file.write_all(csv.as_bytes()).unwrap();
       return;
     }

@@ -5,6 +5,7 @@ authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 
 [dependencies]
 cgmath = "*"
+chrono = "*"
 conrod = { version = "*", features = ["glium", "winit"] }
 glium = { version = "*", features = ["glutin"] }
 image = "*"
