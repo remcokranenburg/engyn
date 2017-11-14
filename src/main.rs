@@ -33,6 +33,7 @@ mod light;
 mod material;
 mod math;
 mod mesh;
+mod network_graph;
 mod object;
 mod performance;
 mod quality;
@@ -89,6 +90,7 @@ use gui::Action;
 use gui::Gui;
 use material::Material;
 use mesh::Mesh;
+use network_graph::Network;
 use object::Object;
 use performance::FramePerformance;
 use quality::Quality;
@@ -321,6 +323,13 @@ fn main() {
   let mut empty = Object::new_plane(&display, Rc::clone(&empty_material), [0.0001,0.0001],
       [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
 
+  let mut network_graph = Network::new(&display, 200, 10);
+  network_graph.transform = Matrix4::new(
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 1.0, 1.0, 1.0);
+
   // add a light
 
   let num_lights = 4;
@@ -439,6 +448,8 @@ fn main() {
 
         empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
 
+        network_graph.draw(&display, &mut framebuffer, projection, view, &render_params);
+
         for (i, ref gamepad) in gamepads.iter().enumerate() {
           let state = gamepad.borrow().state();
           let rotation = match state.pose.orientation {
@@ -521,6 +532,8 @@ fn main() {
 
       target.finish().unwrap();
     }
+
+    network_graph.update();
 
     // once every 100 frames, check for VR events
     event_counter += 1;
