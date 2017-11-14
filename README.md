@@ -11,6 +11,13 @@ algorithm would simplify the objects.
 
 ## How do I run this?
 
+There is an experimental [download](https://bitbucket.org/Remco47/engyn/downloads/engyn-0.1.0-windows.zip)
+(80MB) available for Windows. Unzip it and play with two provided scenes: the default scene that is
+used in development to try things out, and the well-known Sponza Palace scene. A Vive works, but is
+not required. Your normal monitor will show the scene in cross-eyed 3D.
+
+## How do I build this?
+
 1. This program is written in Rust. You will need the latest nightly release, which can be obtained
     with [Rustup](https://rustup.rs/). If you're on Windows and you want VR support, choose the MSVC
     variant when you're installing Rust from Rustup. [More information about Windows](https://github.com/rust-lang-nursery/rustup.rs#working-with-rust-on-windows)
