@@ -4,9 +4,11 @@ Engyn is an experimental VR graphics engine, designed to automatically tune its 
 target frame rate. To this end, every graphical feature will be highly configurable and detailed
 performance breakdowns will be generated that can be used to decide how to tune the algorithms.
 
+[![Screenshot of default scene](screenshots/engyn-default-scene.thumbnail.png)](screenshots/engyn-default-scene.png)
+
 Currently, you can walk around in a simple static environment with basic dynamic lighting. In
 VR-mode, your controllers are visible. Auto-tuning is currently available for resolution and LOD.
-The LOD algorithm is currently a simple hack that reduces the number of objects drawn. A real LOD
+The LOD algorithm is currently a simple hack that reduces the number of objects drawn; a real LOD
 algorithm would simplify the objects.
 
 ## How do I run this?
