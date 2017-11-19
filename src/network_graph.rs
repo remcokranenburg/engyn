@@ -119,11 +119,11 @@ impl Network {
 
       program: program,
 
-      alpha: 1.0,
-      alpha_decay: 1.0 - f32::powf(0.001, 1.0 / 300.0),
+      alpha: 0.1,
+      alpha_decay: 1.0 - f32::powf(0.001, 1.0 / 2400.0),
       alpha_min: 0.001,
       alpha_target: 0.0,
-      velocity_decay: 0.6,
+      velocity_decay: 0.1,
 
       gravity_strength: 2.0,
 
@@ -231,16 +231,9 @@ impl Network {
   }
 
   fn initialize_nodes(nodes: &mut Vec<Node>, num_nodes: usize) {
-    let mut rng = rand::thread_rng();
-    let position_range = Range::new(-1.0, 1.0);
-
     while nodes.len() < num_nodes {
       nodes.push(Node {
-        vertex: Vertex { position: (
-          position_range.ind_sample(&mut rng),
-          position_range.ind_sample(&mut rng),
-          position_range.ind_sample(&mut rng),
-        )},
+        vertex: Vertex { position: (Network::jiggle(), Network::jiggle(), Network::jiggle()) },
         velocity: (0.0, 0.0, 0.0),
         fixed: false,
       });

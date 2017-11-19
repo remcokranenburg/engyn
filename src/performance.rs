@@ -80,6 +80,10 @@ impl FramePerformance {
     current_frame_time > Duration::new(0, TARGET_FRAME_TIMES[if vr_mode { 0 } else { 2 }])
   }
 
+  pub fn get_frame_number(&self) -> i32 {
+    self.frame_count
+  }
+
   pub fn to_csv(&self) -> String {
     let mut log_csv = String::from("Frame,FPS,Quality\n");
     for (i, frame) in self.log.iter().enumerate() {

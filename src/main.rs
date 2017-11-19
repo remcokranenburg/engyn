@@ -348,6 +348,7 @@ fn main() {
   let mut event_counter = 0u64;
 
   let mut fps_camera = FpsCamera::new(Vector3::new(0.0, 1.8, 3.0));
+  fps_camera.pitch = Rad(-f32::consts::PI / 8.0);
 
   // create a model for each gamepad
   let gamepads = vr.get_gamepads();
@@ -627,10 +628,14 @@ fn main() {
               let origin_y = height as f64 / 2.0;
               let rel_x = position.0 - origin_x;
               let rel_y = position.1 - origin_y;
-              fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
-                .max(-f32::consts::PI / 2.0)
-                .min(f32::consts::PI / 2.0));
-              fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
+
+              if frame_performance.get_frame_number() > 1 {
+                fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
+                  .max(-f32::consts::PI / 2.0)
+                  .min(f32::consts::PI / 2.0));
+                fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
+              }
+
               window.set_cursor_position(origin_x as i32, origin_y as i32).unwrap();
             }
           },
