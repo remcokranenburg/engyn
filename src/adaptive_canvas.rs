@@ -16,22 +16,22 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use glium::BlitTarget;
 use glium::Rect;
 use glium::GlObject;
+use glium::Surface;
 use glium::backend::Facade;
-use glium::framebuffer::DepthRenderBuffer;
 use glium::framebuffer::SimpleFrameBuffer;
 use glium::framebuffer::ToColorAttachment;
 use glium::framebuffer::ToDepthAttachment;
 use glium::framebuffer::ColorAttachment;
 use glium::framebuffer::DepthAttachment;
 use glium::framebuffer::ValidationError;
-use glium::texture::DepthFormat;
 use glium::texture::DepthTexture2d;
 use glium::texture::DepthTexture2dMultisample;
-use glium::texture::MipmapsOption;
 use glium::texture::Texture2d;
 use glium::texture::Texture2dMultisample;
+use glium::uniforms::MagnifySamplerFilter;
 use webvr::VRLayer;
 
 use geometry::Geometry;
@@ -45,7 +45,7 @@ pub struct AdaptiveCanvas {
   color_buffers_msaa: Vec<Texture2dMultisample>,
   depth_buffer: DepthTexture2d,
   depth_buffers_msaa: Vec<DepthTexture2dMultisample>,
-  layers: Vec<VRLayer>,
+  layer: VRLayer,
   max_width: u32,
   max_height: u32,
   max_msaa_level: usize,
@@ -59,11 +59,9 @@ impl<'a> AdaptiveCanvas {
 
     let mut color_buffers_msaa = Vec::new();
     let mut depth_buffers_msaa = Vec::new();
-    let mut layers = Vec::new();
 
     let color_buffer = Texture2d::empty(display, max_width, max_height).unwrap();
     let depth_buffer = DepthTexture2d::empty(display, max_width, max_height).unwrap();
-    layers.push(VRLayer { texture_id: color_buffer.get_id(), .. Default::default() });
 
     for i in 1..max_msaa_level + 1 {
       color_buffers_msaa.push(Texture2dMultisample::empty(
@@ -77,14 +75,10 @@ impl<'a> AdaptiveCanvas {
           max_width,
           max_height,
           2u32.pow(i as u32)).unwrap());
-
-      layers.push(VRLayer { texture_id: color_buffers_msaa[i as usize - 1].get_id(), ..Default::default() });
     }
 
-    println!("number of msaa color buffers: {}", color_buffers_msaa.len());
-
     AdaptiveCanvas {
-      layers: layers,
+      layer: VRLayer { texture_id: color_buffer.get_id(), .. Default::default() },
       rectangle: Geometry::new_quad(display, [2.0, 2.0], true),
       viewports: [
           Rect {
@@ -130,19 +124,17 @@ impl<'a> AdaptiveCanvas {
     let fraction_half_width = fraction_width * 0.5;
     let half_width = (width * 0.5) as u32;
 
-    for ref mut layer in &mut self.layers {
-      layer.left_bounds = [
-          0.0,
-          1.0 - fraction_height,
-          fraction_half_width,
-          fraction_height];
+    self.layer.left_bounds = [
+        0.0,
+        1.0 - fraction_height,
+        fraction_half_width,
+        fraction_height];
 
-      layer.right_bounds = [
-          fraction_half_width,
-          1.0 - fraction_height,
-          fraction_half_width,
-          fraction_height];
-    }
+    self.layer.right_bounds = [
+        fraction_half_width,
+        1.0 - fraction_height,
+        fraction_half_width,
+        fraction_height];
 
     self.rectangle.texcoords.write(&[
         Texcoord { texcoord: (0.0, 0.0) },
@@ -186,7 +178,6 @@ impl<'a> AdaptiveCanvas {
     if self.current_msaa_level == 0 {
       self.color_buffer.to_color_attachment()
     } else {
-      // TODO resolve msaa to non-msaa first
       self.color_buffers_msaa[self.current_msaa_level - 1].to_color_attachment()
     }
   }
@@ -195,12 +186,50 @@ impl<'a> AdaptiveCanvas {
     if self.current_msaa_level == 0 {
       self.depth_buffer.to_depth_attachment()
     } else {
-      // TODO resolve msaa to non-msaa first
-      self.depth_buffers_msaa[self.current_msaa_level].to_depth_attachment()
+      self.depth_buffers_msaa[self.current_msaa_level - 1].to_depth_attachment()
     }
   }
 
-  pub fn get_layer(&self) -> &VRLayer {
-    &self.layers[self.current_msaa_level]
+  pub fn resolve(&self, display: &Facade) {
+    // if we're doing MSAA, resolve it to non-MSAA
+    if self.current_msaa_level > 0 {
+      let framebuffer = SimpleFrameBuffer::with_depth_buffer(
+          display,
+          self.color_buffer.to_color_attachment(),
+          self.depth_buffer.to_depth_attachment()).unwrap();
+      let msaa_color_buffer = &self.color_buffers_msaa[self.current_msaa_level - 1];
+      let msaa_color_attachment = msaa_color_buffer.to_color_attachment();
+      let msaa_depth_buffer = &self.depth_buffers_msaa[self.current_msaa_level - 1];
+      let msaa_depth_attachment = msaa_depth_buffer.to_depth_attachment();
+      let msaa_framebuffer = SimpleFrameBuffer::with_depth_buffer(
+          display,
+          msaa_color_attachment,
+          msaa_depth_attachment).unwrap();
+      let rect = Rect {
+        left: 0,
+        bottom: 0,
+        width: self.viewports[0].width * 2,
+        height: self.viewports[0].height,
+      };
+      let blit_target = BlitTarget {
+        left: 0,
+        bottom: 0,
+        width: rect.width as i32,
+        height: rect.height as i32,
+      };
+      msaa_framebuffer.blit_color(&rect, &framebuffer, &blit_target, MagnifySamplerFilter::Nearest);
+    }
+  }
+
+  pub fn get_resolved_framebuffer(&self, display: &Facade)
+      -> Result<SimpleFrameBuffer, ValidationError> {
+    SimpleFrameBuffer::with_depth_buffer(
+        display,
+        self.color_buffer.to_color_attachment(),
+        self.depth_buffer.to_depth_attachment())
+  }
+
+  pub fn get_resolved_layer(&self) -> &VRLayer {
+    &self.layer
   }
 }

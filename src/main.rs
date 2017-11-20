@@ -48,11 +48,13 @@ use cgmath::SquareMatrix;
 use cgmath::Transform;
 use cgmath::Vector3;
 use chrono::Utc;
+use glium::BlitTarget;
 use glium::Depth;
 use glium::DepthTest;
 use glium::Display;
 use glium::DrawParameters;
 use glium::Program;
+use glium::Rect;
 use glium::Surface;
 use glium::backend::Facade;
 use glium::glutin::Event;
@@ -176,7 +178,7 @@ fn main() {
       &display,
       render_dimensions.0 * 4,
       render_dimensions.1 * 2,
-      0);
+      3);
 
   canvas.set_resolution_scale(0.5);
 
@@ -503,18 +505,22 @@ fn main() {
           }
         }
 
-        gui.draw(&mut framebuffer, viewport);
+        canvas.resolve(&display);
+
+        for eye in &eyes {
+          gui.draw(&mut canvas.get_resolved_framebuffer(&display).unwrap(), *eye.0);
+        }
       }
 
       if vr_mode {
-        vr_display.unwrap().borrow_mut().submit_frame(canvas.get_layer());
+        vr_display.unwrap().borrow_mut().submit_frame(canvas.get_resolved_layer());
       }
 
       // now draw the canvas as a texture to the window
 
       let target = display.draw();
 
-      let src_rect = glium::Rect {
+      let src_rect = Rect {
         left: 0,
         bottom: 0,
         width: canvas.viewports[0].width * 2,
@@ -523,14 +529,15 @@ fn main() {
 
       let (width, height) = window.get_inner_size_pixels().unwrap();
 
-      let blit_target = glium::BlitTarget {
+      let blit_target = BlitTarget {
         left: 0,
         bottom: 0,
         width: width as i32,
         height: height as i32,
       };
 
-      framebuffer.blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
+      canvas.get_resolved_framebuffer(&display).unwrap()
+        .blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
 
       target.finish().unwrap();
     }
