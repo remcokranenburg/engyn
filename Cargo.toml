@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 
 [dependencies]
+argparse = "*"
 cgmath = "*"
 chrono = "*"
 conrod = { version = "*", features = ["glium", "winit"] }

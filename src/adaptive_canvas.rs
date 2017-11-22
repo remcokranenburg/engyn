@@ -122,7 +122,7 @@ impl<'a> AdaptiveCanvas {
     let fraction_height = bounded_height / self.max_height as f32;
 
     let fraction_half_width = fraction_width * 0.5;
-    let half_width = (width * 0.5) as u32;
+    let bounded_half_width = (bounded_width * 0.5) as u32;
 
     self.layer.left_bounds = [
         0.0,
@@ -142,12 +142,12 @@ impl<'a> AdaptiveCanvas {
         Texcoord { texcoord: (fraction_width, fraction_height) },
         Texcoord { texcoord: (fraction_width, 0.0) }]);
 
-    self.viewports[0].width = half_width;
-    self.viewports[0].height = height as u32;
+    self.viewports[0].width = bounded_half_width as u32;
+    self.viewports[0].height = bounded_height as u32;
 
-    self.viewports[1].left = half_width;
-    self.viewports[1].width = half_width;
-    self.viewports[1].height = height as u32;
+    self.viewports[1].left = bounded_half_width as u32;
+    self.viewports[1].width = bounded_half_width as u32;
+    self.viewports[1].height = bounded_height as u32;
   }
 
   pub fn set_msaa_scale(&mut self, scale: f32) {
@@ -162,7 +162,9 @@ impl<'a> AdaptiveCanvas {
 
   fn set_msaa_level(&mut self, msaa_level: usize) {
     if msaa_level < self.color_buffers_msaa.len() + 1 {
-      self.current_msaa_level = msaa_level;
+      if self.current_msaa_level != msaa_level {
+        self.current_msaa_level = msaa_level;
+      }
     }
   }
 

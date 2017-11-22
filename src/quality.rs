@@ -24,35 +24,60 @@ pub struct Quality {
   pub level: Rc<RefCell<f32>>,
   pub weight_resolution: Rc<RefCell<f32>>,
   pub weight_msaa: Rc<RefCell<f32>>,
+  pub weight_lod: Rc<RefCell<f32>>,
 }
 
 impl Quality {
-  pub fn new() -> Quality {
+  pub fn new(weights: Vec<f32>) -> Quality {
+    let (
+      weight_resolution,
+      weight_msaa,
+      weight_lod,
+    ) = if weights.len() == 3 { (
+      weights[0],
+      weights[1],
+      weights[2],
+    ) } else { (
+      1.0,
+      1.0,
+      1.0,
+    ) };
+
     Quality {
       level: Rc::new(RefCell::new(1.0)),
-      weight_resolution: Rc::new(RefCell::new(0.5)),
-      weight_msaa: Rc::new(RefCell::new(0.5)),
+      weight_resolution: Rc::new(RefCell::new(weight_resolution)),
+      weight_msaa: Rc::new(RefCell::new(weight_msaa)),
+      weight_lod: Rc::new(RefCell::new(weight_lod)),
     }
   }
 
-  pub fn set_level(&self, missed_frame: bool) {
-    // TODO: come up with a better frame time control mechanism
+  pub fn set_level(&self, predicted_remaining_time: u32, target_frame_time: u32) {
+    let ratio_remaining = predicted_remaining_time as f32 / target_frame_time as f32;
 
     let original_level = *self.level.borrow();
 
-    if missed_frame {
-      *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.01);
+    if ratio_remaining < 0.05 {
+      *self.level.borrow_mut() = f32::max(original_level * 0.5, 0.0);
+    } else if ratio_remaining < 0.2 {
+      *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0);
     } else {
       *self.level.borrow_mut() = f32::min(original_level * 1.01, 1.0);
     }
   }
 
+  fn mix(x: f32, y: f32, a: f32) -> f32 {
+    a * x + (1.0 - a) * y
+  }
+
   pub fn get_target_resolution(&self) -> f32 {
-    // TODO: do actual calculation here
-    *self.level.borrow()
+    Quality::mix(*self.level.borrow(), 0.5, *self.weight_resolution.borrow())
   }
 
   pub fn get_target_msaa(&self) -> f32 {
-    *self.level.borrow()
+    Quality::mix(*self.level.borrow(), 0.0, *self.weight_msaa.borrow())
+  }
+
+  pub fn get_target_lod(&self) -> f32 {
+    Quality::mix(*self.level.borrow(), 1.0, *self.weight_lod.borrow())
   }
 }

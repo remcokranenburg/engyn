@@ -175,7 +175,13 @@ impl Network {
   }
 
   pub fn update(&mut self) -> bool {
-    if self.alpha < self.alpha_min { return false; }
+    if self.alpha < self.alpha_min {
+      let num_nodes = self.nodes.len();
+      self.alpha = 0.1;
+      self.nodes = Vec::new();
+      Network::initialize_nodes(&mut self.nodes, num_nodes);
+      return false;
+    }
 
     self.alpha += (self.alpha_target - self.alpha) * self.alpha_decay;
 

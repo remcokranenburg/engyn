@@ -16,79 +16,122 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::time::Duration;
 use std::time::Instant;
-use std::thread;
 use std::fmt::Write;
 
-// these target frame times will cause vsync misses so it hits the desired frame rate
 const TARGET_FRAME_TIMES: [u32; 5] = [
-    13_300_000u32,  // target for 90fps
-    20_000_000u32,  // target for 60fps
-    25_000_000u32,  // target for 45fps
-    40_000_000u32,  // target for 30fps
-    77_000_000u32,  // target for 15fps
+    11_111_111u32,  // target for 90fps
+    16_666_667u32,  // target for 60fps
+    22_222_222u32,  // target for 45fps
+    33_333_333u32,  // target for 30fps
+    66_666_667u32,  // target for 15fps
 ];
 
+pub struct LogEntry {
+  pub frame_time: u32,
+  pub sync_poses_time: u32,
+  pub sync_frame_data_time: u32,
+  pub draw_time: u32,
+  pub post_draw_time: u32,
+  pub quality: f32,
+}
+
 pub struct FramePerformance {
-  log: Vec<(u32, f32)>,
+  log: Vec<LogEntry>,
   time_frame_start: Instant,
+  time_sync_poses: Instant,
+  time_sync_frame_data: Instant,
+  time_draw_start: Instant,
+  time_draw_end: Instant,
+  time_frame_end: Instant,
   frame_count: i32,
   current_fps_target: usize,
 }
 
 impl FramePerformance {
-  pub fn new() -> FramePerformance {
+  pub fn new(vr_mode: bool) -> FramePerformance {
+    let now = Instant::now();
+
     FramePerformance {
       log: Vec::new(),
-      time_frame_start: Instant::now(),
+      time_frame_start: now,
+      time_sync_poses: now,
+      time_sync_frame_data: now,
+      time_draw_start: now,
+      time_draw_end: now,
+      time_frame_end: now,
       frame_count: 0,
-      current_fps_target: 0,
+      current_fps_target: if vr_mode { 0 } else { 1 },
     }
   }
 
-  pub fn reduce_fps(&mut self) {
-    if self.current_fps_target < TARGET_FRAME_TIMES.len() - 1 {
-      self.current_fps_target += 1;
-      println!("Target frame time: {:?}", TARGET_FRAME_TIMES[self.current_fps_target] / 1_000_000u32);
+  pub fn process_frame_start(&mut self, quality: f32) {
+    let time_new_frame = Instant::now();
+
+    // write log entry for previous frame
+    self.log.push(LogEntry {
+      frame_time: time_new_frame.duration_since(self.time_frame_start).subsec_nanos(),
+      sync_poses_time: self.time_sync_poses.duration_since(self.time_frame_start).subsec_nanos(),
+      sync_frame_data_time: self.time_sync_frame_data.duration_since(self.time_sync_poses).subsec_nanos(),
+      draw_time: self.time_draw_end.duration_since(self.time_draw_start).subsec_nanos(),
+      post_draw_time: self.time_frame_end.duration_since(self.time_draw_end).subsec_nanos(),
+      quality: quality,
+    });
+
+    self.frame_count += 1;
+    self.time_frame_start = time_new_frame;
+  }
+
+  pub fn process_sync_poses(&mut self) {
+    self.time_sync_poses = Instant::now();
+  }
+
+  pub fn process_sync_frame_data(&mut self) {
+    self.time_sync_frame_data = Instant::now();
+  }
+
+  pub fn process_draw_start(&mut self) {
+    self.time_draw_start = Instant::now();
+  }
+
+  pub fn process_draw_end(&mut self) -> u32 {
+    self.time_draw_end = Instant::now();
+
+    let current_frame_time = self.time_draw_end.duration_since(self.time_sync_poses)
+      .subsec_nanos();
+
+    if self.get_target_frame_time() < current_frame_time {
+      0
+    } else {
+      self.get_target_frame_time() - current_frame_time
     }
   }
 
-  pub fn increase_fps(&mut self) {
-    if self.current_fps_target > 0 {
-      self.current_fps_target -= 1;
-      println!("Target frame time: {:?}", TARGET_FRAME_TIMES[self.current_fps_target] / 1_000_000u32);
-    }
-  }
-
-  pub fn process_frame_start(&mut self) {
-      self.frame_count += 1;
-      self.time_frame_start = Instant::now();
-  }
-
-  pub fn process_frame_end(&mut self, vr_mode: bool, quality: f32) -> bool {
-    let current_frame_time = Instant::now().duration_since(self.time_frame_start);
-    let target_frame_time = Duration::new(0, TARGET_FRAME_TIMES[self.current_fps_target]);
-
-    if self.current_fps_target > 0 && current_frame_time < target_frame_time {
-      thread::sleep(target_frame_time - current_frame_time);
-    }
-
-    self.log.push((
-        current_frame_time.subsec_nanos(),
-        quality));
-    current_frame_time > Duration::new(0, TARGET_FRAME_TIMES[if vr_mode { 0 } else { 2 }])
+  pub fn process_frame_end(&mut self) {
+    self.time_frame_end = Instant::now();
   }
 
   pub fn get_frame_number(&self) -> i32 {
     self.frame_count
   }
 
+  pub fn get_target_frame_time(&self) -> u32 {
+    TARGET_FRAME_TIMES[self.current_fps_target]
+  }
+
   pub fn to_csv(&self) -> String {
-    let mut log_csv = String::from("Frame,FPS,Quality\n");
+    let mut log_csv = String::from("Frame,FPS,SyncPoses,SyncFrameData,Draw,PostDraw,Idle,Quality\n");
     for (i, frame) in self.log.iter().enumerate() {
-      let fps = 1_000_000_000f64 / (frame.0 as f64);
-      write!(&mut log_csv, "{},{},{}\n", i, fps, frame.1).unwrap();
+      let fps = 1_000_000_000f64 / (frame.frame_time as f64);
+      write!(&mut log_csv, "{},{},{},{},{},{},{},{}\n",
+          i,
+          fps,
+          frame.sync_poses_time,
+          frame.sync_frame_data_time,
+          frame.draw_time,
+          frame.post_draw_time,
+          frame.frame_time - frame.sync_poses_time - frame.sync_frame_data_time - frame.draw_time - frame.post_draw_time,
+          frame.quality).unwrap();
     }
     log_csv
   }

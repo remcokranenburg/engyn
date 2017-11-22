@@ -16,11 +16,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#[macro_use] extern crate glium;
-extern crate image;
+extern crate argparse;
 extern crate cgmath;
 extern crate chrono;
 #[macro_use] extern crate conrod;
+#[macro_use] extern crate glium;
+extern crate image;
 extern crate rand;
 extern crate rust_webvr as webvr;
 extern crate tobj;
@@ -40,6 +41,10 @@ mod quality;
 mod teapot;
 mod uniforms;
 
+use argparse::ArgumentParser;
+use argparse::List;
+use argparse::Print;
+use argparse::Store;
 use cgmath::Deg;
 use cgmath::Matrix4;
 use cgmath::Quaternion;
@@ -110,6 +115,24 @@ fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
 }
 
 fn main() {
+  let mut obj_filename = "".to_string();
+  let mut perf_filename = "".to_string();
+  let mut weights = Vec::<f32>::new();
+
+  {
+    let mut ap = ArgumentParser::new();
+    ap.set_description("Engyn: a configurable adaptive quality graphics engine.");
+    ap.add_option(&["-V", "--version"],
+        Print(env!("CARGO_PKG_VERSION").to_string()), "show version");
+    ap.refer(&mut obj_filename)
+      .add_option(&["-o", "--open"], Store, "open .obj file");
+    ap.refer(&mut perf_filename)
+      .add_option(&["-p", "--perf"], Store, "performance measurements");
+    ap.refer(&mut weights)
+      .add_option(&["--weights"], List, "quality weights");
+    ap.parse_args_or_exit();
+  }
+
   let mut vr = VRServiceManager::new();
   vr.register_defaults();
   vr.initialize_services();
@@ -178,7 +201,7 @@ fn main() {
       &display,
       render_dimensions.0 * 4,
       render_dimensions.1 * 2,
-      3);
+      4);
 
   canvas.set_resolution_scale(0.5);
 
@@ -267,8 +290,8 @@ fn main() {
 
   let mut world = Vec::new();
 
-  if let Some(filename) = env::args().nth(1) {
-    world.push(Object::from_file(&display, &filename));
+  if obj_filename != "" {
+    world.push(Object::from_file(&display, &obj_filename));
   } else {
     // a triangle
     world.push(Object::new_triangle(&display, Rc::clone(&marble_material), [1.0, 1.0], [0.0, 0.0, 0.0],
@@ -373,14 +396,13 @@ fn main() {
     });
   }
 
-  let quality = Quality::new();
+  let quality = Quality::new(weights);
   let mut gui = Gui::new(&display, Rc::clone(&quality.weight_resolution),
-      Rc::clone(&quality.weight_msaa));
-  let mut frame_performance = FramePerformance::new();
-
+      Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
+  let mut frame_performance = FramePerformance::new(vr_mode);
 
   loop {
-    frame_performance.process_frame_start();
+    frame_performance.process_frame_start(*quality.level.borrow());
 
     let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
     let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
@@ -393,6 +415,8 @@ fn main() {
         left_view_matrix,
         right_view_matrix) = if vr_mode {
       vr_display.unwrap().borrow_mut().sync_poses();
+      frame_performance.process_sync_poses();
+
       let display_data = vr_display.unwrap().borrow().data();
 
       let standing_transform = if let Some(ref stage) = display_data.stage_parameters {
@@ -405,6 +429,8 @@ fn main() {
 
       let frame_data = vr_display.unwrap().borrow().synced_frame_data(0.1, 1000.0);
 
+      frame_performance.process_sync_frame_data();
+
       let left_projection_matrix = math::vec_to_matrix(&frame_data.left_projection_matrix);
       let right_projection_matrix = math::vec_to_matrix(&frame_data.right_projection_matrix);
       let left_view_matrix = math::vec_to_matrix(&frame_data.left_view_matrix);
@@ -413,8 +439,13 @@ fn main() {
       (standing_transform, left_projection_matrix, right_projection_matrix, left_view_matrix,
           right_view_matrix)
     } else {
+      frame_performance.process_sync_poses();
+
       let standing_transform = Matrix4::<f32>::identity();
       let view = fps_camera.get_view(0.016); // TODO: get actual timedelta
+
+      frame_performance.process_sync_frame_data();
+
       let left_translation = Matrix4::from_translation(Vector3::new(-0.05, 0.0, 0.0));
       let left_view = left_translation * view;
       let right_translation = Matrix4::from_translation(Vector3::new(0.05, 0.0, 0.0));
@@ -426,6 +457,8 @@ fn main() {
 
     action = gui.prepare(*quality.level.borrow());
 
+    frame_performance.process_draw_start();
+
     {
       let eyes = [
         (&canvas.viewports[0], &left_projection_matrix, &left_view_matrix),
@@ -433,7 +466,7 @@ fn main() {
       ];
 
       let mut framebuffer = canvas.get_framebuffer(&display).unwrap();
-      framebuffer.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+      framebuffer.clear_color_and_depth((0.8, 0.8, 0.8, 1.0), 1.0);
 
       for eye in &eyes {
         let projection = math::matrix_to_uniform(*eye.1);
@@ -443,7 +476,7 @@ fn main() {
         render_params.viewport = Some(viewport);
 
         let mut i = 0;
-        let quality_level = *quality.level.borrow();
+        let quality_level = quality.get_target_lod();
         for object in world.iter_mut() {
           if quality_level > (i as f32 / num_objects as f32) {
             i = object.draw(quality_level, i, num_objects, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
@@ -542,6 +575,8 @@ fn main() {
       target.finish().unwrap();
     }
 
+    let predicted_remaining_time = frame_performance.process_draw_end();
+
     network_graph.update();
 
     // once every 100 frames, check for VR events
@@ -561,7 +596,7 @@ fn main() {
           VREvent::Display(VRDisplayEvent::Deactivate(data, _)) => {
             println!("VR display {}: Deactivated.", data.display_id);
           },
-          _ => println!("VR event: {:?}", event),
+          _ => (),
         }
       }
     }
@@ -616,9 +651,6 @@ fn main() {
                   }
                 },
 
-                Some(VirtualKeyCode::Equals)    => if key_is_pressed { frame_performance.reduce_fps() },
-                Some(VirtualKeyCode::Minus)     => if key_is_pressed { frame_performance.increase_fps() },
-
                 // activate while key is pressed
                 Some(VirtualKeyCode::W) => fps_camera.forward = key_is_pressed,
                 Some(VirtualKeyCode::S) => fps_camera.backward = key_is_pressed,
@@ -669,17 +701,19 @@ fn main() {
       Action::None => (),
     }
 
-    let has_framedrops = frame_performance.process_frame_end(vr_mode, *quality.level.borrow());
-
-    quality.set_level(has_framedrops);
+    quality.set_level(predicted_remaining_time, frame_performance.get_target_frame_time());
     canvas.set_resolution_scale(quality.get_target_resolution());
     canvas.set_msaa_scale(quality.get_target_msaa());
 
+    frame_performance.process_frame_end();
+
     if is_done {
-      let csv = frame_performance.to_csv();
-      let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
-      let mut file = File::create(format!("performance/{}.csv", now)).unwrap();
-      file.write_all(csv.as_bytes()).unwrap();
+      if perf_filename != "" {
+        let csv = frame_performance.to_csv();
+        let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
+        let mut file = File::create(format!("{}-{}.csv", perf_filename, now)).unwrap();
+        file.write_all(csv.as_bytes()).unwrap();
+      }
       return;
     }
   }

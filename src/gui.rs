@@ -65,6 +65,7 @@ widget_ids! {
     quality_text,
     resolution_slider,
     msaa_slider,
+    lod_slider,
     quit_button,
   }
 }
@@ -97,7 +98,7 @@ pub struct Gui<'a> {
 
 impl<'a> Gui<'a> {
   pub fn new(display: &'a Display, weight_resolution: Rc<RefCell<f32>>,
-      weight_msaa: Rc<RefCell<f32>>) -> Gui<'a> {
+      weight_msaa: Rc<RefCell<f32>>, weight_lod: Rc<RefCell<f32>>) -> Gui<'a> {
     // TODO: put this in a 'system integration' module
     let executable_string = env::args().nth(0).unwrap();
     let executable_path = Path::new(&executable_string).parent().unwrap();
@@ -132,6 +133,7 @@ impl<'a> Gui<'a> {
         GuiElement { action: Action::Resume, weight: Rc::new(RefCell::new(0.0)) },
         GuiElement { action: Action::None, weight: weight_resolution },
         GuiElement { action: Action::None, weight: weight_msaa },
+        GuiElement { action: Action::None, weight: weight_lod },
         GuiElement { action: Action::Quit, weight: Rc::new(RefCell::new(0.0)) },
       ],
 
@@ -145,7 +147,8 @@ impl<'a> Gui<'a> {
         ("Resume".to_owned(), 0),
         ("Resolution".to_owned(), 1),
         ("MSAA".to_owned(), 2),
-        ("Quit".to_owned(), 3),
+        ("LOD".to_owned(), 3),
+        ("Quit".to_owned(), 4),
       ].iter().cloned().collect(),
     }
   }
@@ -237,6 +240,25 @@ impl<'a> Gui<'a> {
           .set(self.ids.msaa_slider, ui) {
         *msaa_weight_ref.borrow_mut() = weight;
         self.selected_widget = msaa_index;
+      }
+
+      let lod_index = *self.widget_order.get("LOD").unwrap();
+      let lod_weight_ref = Rc::clone(&self.widgets[lod_index].weight);
+      let lod_weight = *lod_weight_ref.borrow();
+
+      if let Some(weight) = Slider::new(lod_weight, 0.0, 1.0)
+          .parent(self.ids.container)
+          .padded_w_of(self.ids.container, 25.0)
+          .color(if self.selected_widget == lod_index {
+              slider_focussed_color
+            } else {
+              slider_default_color
+            })
+          .label(&format!("Level-of-detail weight: {}", lod_weight))
+          .small_font(ui)
+          .set(self.ids.lod_slider, ui) {
+        *lod_weight_ref.borrow_mut() = weight;
+        self.selected_widget = lod_index;
       }
 
       let quit_index = *self.widget_order.get("Quit").unwrap();
