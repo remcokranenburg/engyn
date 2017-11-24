@@ -402,7 +402,7 @@ fn main() {
     });
   }
 
-  let quality = Quality::new(weights);
+  let quality = Quality::new(weights, enable_supersampling);
   let mut gui = Gui::new(&display, Rc::clone(&quality.weight_resolution),
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);

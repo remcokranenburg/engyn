@@ -25,10 +25,12 @@ pub struct Quality {
   pub weight_resolution: Rc<RefCell<f32>>,
   pub weight_msaa: Rc<RefCell<f32>>,
   pub weight_lod: Rc<RefCell<f32>>,
+
+  enable_supersampling: bool,
 }
 
 impl Quality {
-  pub fn new(weights: Vec<f32>) -> Quality {
+  pub fn new(weights: Vec<f32>, enable_supersampling: bool) -> Quality {
     let (
       weight_resolution,
       weight_msaa,
@@ -48,6 +50,8 @@ impl Quality {
       weight_resolution: Rc::new(RefCell::new(weight_resolution)),
       weight_msaa: Rc::new(RefCell::new(weight_msaa)),
       weight_lod: Rc::new(RefCell::new(weight_lod)),
+
+      enable_supersampling: enable_supersampling,
     }
   }
 
@@ -70,7 +74,8 @@ impl Quality {
   }
 
   pub fn get_target_resolution(&self) -> f32 {
-    Quality::mix(*self.level.borrow(), 0.5, *self.weight_resolution.borrow())
+    let default_target = if self.enable_supersampling { 0.5 } else { 1.0 };
+    Quality::mix(*self.level.borrow(), default_target, *self.weight_resolution.borrow())
   }
 
   pub fn get_target_msaa(&self) -> f32 {
