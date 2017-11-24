@@ -45,6 +45,7 @@ use argparse::ArgumentParser;
 use argparse::List;
 use argparse::Print;
 use argparse::Store;
+use argparse::StoreFalse;
 use cgmath::Deg;
 use cgmath::Matrix4;
 use cgmath::Quaternion;
@@ -118,6 +119,7 @@ fn main() {
   let mut obj_filename = "".to_string();
   let mut perf_filename = "".to_string();
   let mut weights = Vec::<f32>::new();
+  let mut enable_supersampling = true;
 
   {
     let mut ap = ArgumentParser::new();
@@ -130,6 +132,9 @@ fn main() {
       .add_option(&["-p", "--perf"], Store, "performance measurements");
     ap.refer(&mut weights)
       .add_option(&["--weights"], List, "quality weights");
+    ap.refer(&mut enable_supersampling)
+      .add_option(&["-s", "--no-supersampling"], StoreFalse, "limit maximum resolution to monitor \
+          resolution");
     ap.parse_args_or_exit();
   }
 
@@ -165,9 +170,10 @@ fn main() {
   };
 
   if !vr_mode {
-    let origin_x = render_dimensions.0 as i32;
-    let origin_y = (render_dimensions.1 / 2) as i32;
-    window.set_cursor_position(origin_x, origin_y).unwrap();
+    let (width, height) = window.get_inner_size_pixels().unwrap();
+    let origin_x = width / 4;
+    let origin_y = height / 4;
+    window.set_cursor_position(origin_x as i32, origin_y as i32).unwrap();
     window.set_cursor(MouseCursor::NoneCursor);
     window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
   }
@@ -197,13 +203,13 @@ fn main() {
   });
   println!("Materials loaded!");
 
-  let mut canvas = AdaptiveCanvas::new(
-      &display,
-      render_dimensions.0 * 4,
-      render_dimensions.1 * 2,
-      4);
+  let canvas_dimensions = if enable_supersampling {
+    (render_dimensions.0 * 4, render_dimensions.1 * 2)
+  } else {
+    (render_dimensions.0 * 2, render_dimensions.1)
+  };
 
-  canvas.set_resolution_scale(0.5);
+  let mut canvas = AdaptiveCanvas::new(&display, canvas_dimensions.0, canvas_dimensions.1, 4);
 
   let render_program = Program::from_source(
       &display,
@@ -663,8 +669,8 @@ fn main() {
           WindowEvent::MouseMoved { position, .. } => {
             if !vr_mode && !gui.is_visible {
               let (width, height) = window.get_inner_size_pixels().unwrap();
-              let origin_x = width as f64 / 2.0;
-              let origin_y = height as f64 / 2.0;
+              let origin_x = width as f64 / 4.0;
+              let origin_y = height as f64 / 4.0;
               let rel_x = position.0 - origin_x;
               let rel_y = position.1 - origin_y;
 
