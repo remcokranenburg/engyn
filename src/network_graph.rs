@@ -120,7 +120,7 @@ impl Network {
       program: program,
 
       alpha: 0.1,
-      alpha_decay: 1.0 - f32::powf(0.001, 1.0 / 2400.0),
+      alpha_decay: 1.0 - f32::powf(0.001, 1.0 / 600.0),
       alpha_min: 0.001,
       alpha_target: 0.0,
       velocity_decay: 0.1,
