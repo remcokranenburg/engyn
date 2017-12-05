@@ -134,7 +134,7 @@ impl Network {
   }
 
   fn gravity_force(&mut self) {
-    for mut node in &mut self.nodes {
+    for node in &mut self.nodes {
       node.velocity.0 += -node.vertex.position.0 * self.gravity_strength * self.alpha;
       node.velocity.1 += -node.vertex.position.1 * self.gravity_strength * self.alpha;
       node.velocity.2 += -node.vertex.position.2 * self.gravity_strength * self.alpha;

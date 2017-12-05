@@ -149,7 +149,7 @@ fn main() {
   let mut events_loop = EventsLoop::new();
   let window_builder = WindowBuilder::new()
     .with_title("Engyn")
-    .with_fullscreen(glium::glutin::get_primary_monitor());
+    .with_fullscreen(Some(events_loop.get_primary_monitor()));
 
   let context_builder = ContextBuilder::new()
     .with_vsync(!vr_mode);
@@ -552,7 +552,8 @@ fn main() {
       }
 
       if vr_mode {
-        vr_display.unwrap().borrow_mut().submit_frame(canvas.get_resolved_layer());
+        vr_display.unwrap().borrow_mut().render_layer(canvas.get_resolved_layer());
+        vr_display.unwrap().borrow_mut().submit_frame();
       }
 
       // now draw the canvas as a texture to the window
