@@ -100,11 +100,18 @@ impl FramePerformance {
     let current_frame_time = self.time_draw_end.duration_since(self.time_sync_poses)
       .subsec_nanos();
 
-    if self.get_target_frame_time() < current_frame_time {
+    let frame = &self.log[self.log.len() - 1];
+    let previous_remaining_time = frame.frame_time - frame.sync_poses_time - frame.sync_frame_data_time - frame.draw_time;
+
+    let current_remaining_time = if self.get_target_frame_time() < current_frame_time {
       0
     } else {
       self.get_target_frame_time() - current_frame_time
-    }
+    };
+
+    let diff = current_remaining_time - previous_remaining_time;
+
+    current_remaining_time + diff
   }
 
   pub fn process_frame_end(&mut self) {
