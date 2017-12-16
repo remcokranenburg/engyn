@@ -46,6 +46,7 @@ use argparse::List;
 use argparse::Print;
 use argparse::Store;
 use argparse::StoreFalse;
+use argparse::StoreTrue;
 use cgmath::Deg;
 use cgmath::Matrix4;
 use cgmath::Quaternion;
@@ -118,6 +119,8 @@ fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
 fn main() {
   let mut obj_filename = "".to_string();
   let mut perf_filename = "".to_string();
+  let mut demo_filename = "".to_string();
+  let mut demo_record = false;
   let mut weights = Vec::<f32>::new();
   let mut enable_supersampling = true;
 
@@ -130,11 +133,16 @@ fn main() {
       .add_option(&["-o", "--open"], Store, "open .obj file");
     ap.refer(&mut perf_filename)
       .add_option(&["-p", "--perf"], Store, "performance measurements");
+    ap.refer(&mut demo_filename)
+      .add_option(&["-d", "--demo-filename"], Store, "file to use for playing demos (or record)");
+    ap.refer(&mut demo_record)
+      .add_option(&["-r", "--record"], StoreTrue, "set this to record demo instead of playback");
     ap.refer(&mut weights)
       .add_option(&["--weights"], List, "quality weights");
     ap.refer(&mut enable_supersampling)
       .add_option(&["-s", "--no-supersampling"], StoreFalse, "limit maximum resolution to monitor \
           resolution");
+
     ap.parse_args_or_exit();
   }
 
