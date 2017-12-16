@@ -175,13 +175,13 @@ fn main() {
       (params.render_width, params.render_height)
     },
     None => {
-      let dimensions = window.get_inner_size_pixels().unwrap();
+      let dimensions = window.get_inner_size().unwrap();
       (dimensions.0 / 2, dimensions.1)
     },
   };
 
   if !vr_mode {
-    let (width, height) = window.get_inner_size_pixels().unwrap();
+    let (width, height) = window.get_inner_size().unwrap();
     let origin_x = width / 4;
     let origin_y = height / 4;
     window.set_cursor_position(origin_x as i32, origin_y as i32).unwrap();
@@ -578,7 +578,7 @@ fn main() {
         height: canvas.viewports[0].height,
       };
 
-      let (width, height) = window.get_inner_size_pixels().unwrap();
+      let (width, height) = window.get_inner_size().unwrap();
 
       let blit_target = BlitTarget {
         left: 0,
@@ -678,9 +678,9 @@ fn main() {
               },
             }
           },
-          WindowEvent::MouseMoved { position, .. } => {
+          WindowEvent::CursorMoved { position, .. } => {
             if !vr_mode && !gui.is_visible {
-              let (width, height) = window.get_inner_size_pixels().unwrap();
+              let (width, height) = window.get_inner_size().unwrap();
               let origin_x = width as f64 / 4.0;
               let origin_y = height as f64 / 4.0;
               let rel_x = position.0 - origin_x;
@@ -708,7 +708,7 @@ fn main() {
         gui.is_visible = false;
 
         if !vr_mode {
-          let (width, height) = window.get_inner_size_pixels().unwrap();
+          let (width, height) = window.get_inner_size().unwrap();
           let origin_x = (width / 2) as i32;
           let origin_y = (height / 2) as i32;
           window.set_cursor_position(origin_x, origin_y).unwrap();
