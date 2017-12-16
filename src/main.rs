@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern crate argparse;
+extern crate bincode;
 extern crate cgmath;
 extern crate chrono;
 #[macro_use] extern crate conrod;
@@ -24,10 +25,12 @@ extern crate chrono;
 extern crate image;
 extern crate rand;
 extern crate rust_webvr as webvr;
+#[macro_use] extern crate serde_derive;
 extern crate tobj;
 
 mod adaptive_canvas;
 mod camera;
+mod demo;
 mod geometry;
 mod gui;
 mod light;

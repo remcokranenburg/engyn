@@ -5,12 +5,15 @@ authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
 
 [dependencies]
 argparse = "*"
-cgmath = "*"
+bincode = "*"
+cgmath = { version = "*", features = ["serde"] }
 chrono = "*"
 conrod = { version = "*", features = ["glium", "winit"] }
 glium = { version = "*", features = ["glutin"] }
 image = "*"
 rand = "*"
 rust-webvr = "*"
+serde = "*"
+serde_derive = "*"
 time = "*"
 tobj = "*"
