@@ -95,6 +95,8 @@ use webvr::VRServiceManager;
 
 use adaptive_canvas::AdaptiveCanvas;
 use camera::FpsCamera;
+use demo::Demo;
+use demo::DemoEntry;
 use light::Light;
 use geometry::Geometry;
 use geometry::Texcoord;
@@ -148,6 +150,14 @@ fn main() {
 
     ap.parse_args_or_exit();
   }
+
+  let mut demo = if demo_record {
+    Some(Demo::new())
+  } else if demo_filename != "" {
+    Some(Demo::from_bincode(&demo_filename).unwrap())
+  } else {
+    None
+  };
 
   let mut vr = VRServiceManager::new();
   vr.register_defaults();
@@ -429,8 +439,8 @@ fn main() {
         standing_transform,
         left_projection_matrix,
         right_projection_matrix,
-        left_view_matrix,
-        right_view_matrix) = if vr_mode {
+        mut left_view_matrix,
+        mut right_view_matrix) = if vr_mode {
       vr_display.unwrap().borrow_mut().sync_poses();
       frame_performance.process_sync_poses();
 
@@ -475,6 +485,21 @@ fn main() {
     action = gui.prepare(*quality.level.borrow());
 
     frame_performance.process_draw_start();
+
+    // record demo entry
+    if let Some(ref mut d) = demo {
+      let frame_number = frame_performance.get_frame_number() as usize;
+
+      if demo_record {
+        d.entries.push(DemoEntry {
+          head_left: left_view_matrix.clone().into(),
+          head_right: right_view_matrix.clone().into(),
+        });
+      } else if frame_number < d.entries.len() {
+        left_view_matrix = d.entries[frame_number].head_left.into();
+        right_view_matrix = d.entries[frame_number].head_right.into();
+      }
+    }
 
     {
       let eyes = [
@@ -725,13 +750,33 @@ fn main() {
 
     frame_performance.process_frame_end();
 
+    // quit when demo is done
+    if let Some(d) = demo.as_mut() {
+      if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
+        is_done = true;
+      }
+    }
+
     if is_done {
+      let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
+
       if perf_filename != "" {
         let csv = frame_performance.to_csv();
-        let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
         let mut file = File::create(format!("{}-{}.csv", perf_filename, now)).unwrap();
         file.write_all(csv.as_bytes()).unwrap();
       }
+
+      if demo_record {
+        if let Some(d) = demo.as_mut() {
+          let filename = if demo_filename != "" {
+            demo_filename
+          } else {
+            format!("performance/{}.demo", now)
+          };
+          d.to_bincode(&filename).unwrap();
+        }
+      }
+
       return;
     }
   }

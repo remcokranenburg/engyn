@@ -25,16 +25,20 @@ use std::io::Write;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct DemoEntry {
-  head_left: [f32; 16],
-  head_right: [f32; 16],
-  controller_left: [f32; 16],
-  controller_right: [f32; 16],
+  pub head_left: [[f32; 4]; 4],
+  pub head_right: [[f32; 4]; 4],
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct Demo(Vec<DemoEntry>);
+pub struct Demo {
+  pub entries: Vec<DemoEntry>,
+}
 
 impl Demo {
+  pub fn new() -> Demo {
+    Demo { entries: Vec::new() }
+  }
+
   pub fn from_bincode(filename: &str) -> Result<Demo> {
     let mut bytes = Vec::new();
     let mut file = File::open(filename)?;
