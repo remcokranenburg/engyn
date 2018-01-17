@@ -30,6 +30,7 @@ extern crate tobj;
 
 mod adaptive_canvas;
 mod camera;
+mod conic;
 mod demo;
 mod geometry;
 mod gui;
@@ -95,6 +96,7 @@ use webvr::VRServiceManager;
 
 use adaptive_canvas::AdaptiveCanvas;
 use camera::FpsCamera;
+use conic::Conic;
 use demo::Demo;
 use demo::DemoEntry;
 use light::Light;
@@ -383,6 +385,13 @@ fn main() {
       0.0, 0.0, 1.0, 0.0,
       0.0, 1.0, 1.0, 1.0);
 
+  let mut conic = Conic::new(&display);
+  conic.transform = Matrix4::new(
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 1.0, -1.0, 1.0);
+
   // add a light
 
   let num_lights = 4;
@@ -508,7 +517,7 @@ fn main() {
       ];
 
       let mut framebuffer = canvas.get_framebuffer(&display).unwrap();
-      framebuffer.clear_color_and_depth((0.8, 0.8, 0.8, 1.0), 1.0);
+      framebuffer.clear_color_and_depth((0.4, 0.4, 0.4, 1.0), 1.0);
 
       for eye in &eyes {
         let projection = math::matrix_to_uniform(*eye.1);
@@ -528,6 +537,7 @@ fn main() {
         empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
 
         network_graph.draw(&display, &mut framebuffer, projection, view, &render_params);
+        conic.draw(&display, &mut framebuffer, projection, view, &render_params);
 
         for (i, ref gamepad) in gamepads.iter().enumerate() {
           let state = gamepad.borrow().state();
@@ -621,6 +631,7 @@ fn main() {
     let predicted_remaining_time = frame_performance.process_draw_end();
 
     network_graph.update();
+    conic.update();
 
     // once every 100 frames, check for VR events
     event_counter += 1;
@@ -685,6 +696,10 @@ fn main() {
                 Some(VirtualKeyCode::Down)      => if key_is_pressed { gui.select_next() },
                 Some(VirtualKeyCode::Left)      => if key_is_pressed { gui.decrease_slider() },
                 Some(VirtualKeyCode::Right)     => if key_is_pressed { gui.increase_slider() },
+                Some(VirtualKeyCode::H)         => if key_is_pressed { conic.decrease_eccentricity() },
+                Some(VirtualKeyCode::J)         => if key_is_pressed { conic.increase_eccentricity() },
+                Some(VirtualKeyCode::K)         => if key_is_pressed { conic.decrease_slr() },
+                Some(VirtualKeyCode::L)         => if key_is_pressed { conic.increase_slr() },
                 Some(VirtualKeyCode::Return)    => if key_is_pressed {
                   let tmp_action = gui.activate();
 
