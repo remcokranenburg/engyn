@@ -34,6 +34,7 @@ pub struct LogEntry {
   pub draw_time: u32,
   pub post_draw_time: u32,
   pub quality: f32,
+  pub feature: String,
 }
 
 pub struct FramePerformance {
@@ -46,6 +47,8 @@ pub struct FramePerformance {
   time_frame_end: Instant,
   frame_count: i32,
   current_fps_target: usize,
+  quality: f32,
+  feature: String,
 }
 
 impl FramePerformance {
@@ -62,10 +65,16 @@ impl FramePerformance {
       time_frame_end: now,
       frame_count: 0,
       current_fps_target: if vr_mode { 0 } else { 1 },
+      quality: 0.0,
+      feature: "resolution".to_string(),
     }
   }
 
-  pub fn process_frame_start(&mut self, quality: f32) {
+  pub fn reset_frame_count(&mut self) {
+    self.frame_count = 0;
+  }
+
+  pub fn process_frame_start(&mut self, feature: &str, quality: f32) {
     let time_new_frame = Instant::now();
 
     // write log entry for previous frame
@@ -75,11 +84,14 @@ impl FramePerformance {
       sync_frame_data_time: self.time_sync_frame_data.duration_since(self.time_sync_poses).subsec_nanos(),
       draw_time: self.time_draw_end.duration_since(self.time_draw_start).subsec_nanos(),
       post_draw_time: self.time_frame_end.duration_since(self.time_draw_end).subsec_nanos(),
-      quality: quality,
+      quality: self.quality,
+      feature: self.feature.clone(),
     });
 
     self.frame_count += 1;
     self.time_frame_start = time_new_frame;
+    self.quality = quality;
+    self.feature = feature.to_string();
   }
 
   pub fn process_sync_poses(&mut self) {
@@ -127,10 +139,10 @@ impl FramePerformance {
   }
 
   pub fn to_csv(&self) -> String {
-    let mut log_csv = String::from("Frame,FPS,SyncPoses,SyncFrameData,Draw,PostDraw,Idle,Quality\n");
+    let mut log_csv = String::from("Frame,FPS,SyncPoses,SyncFrameData,Draw,PostDraw,Idle,Quality,Feature\n");
     for (i, frame) in self.log.iter().enumerate() {
       let fps = 1_000_000_000f64 / (frame.frame_time as f64);
-      write!(&mut log_csv, "{},{},{},{},{},{},{},{}\n",
+      write!(&mut log_csv, "{},{},{},{},{},{},{},{},{}\n",
           i,
           fps,
           frame.sync_poses_time,
@@ -138,7 +150,8 @@ impl FramePerformance {
           frame.draw_time,
           frame.post_draw_time,
           frame.frame_time - frame.sync_poses_time - frame.sync_frame_data_time - frame.draw_time - frame.post_draw_time,
-          frame.quality).unwrap();
+          frame.quality,
+          frame.feature).unwrap();
     }
     log_csv
   }

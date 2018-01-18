@@ -20,7 +20,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::f32;
 
+const BENCHMARK_BASE_LEVEL: f32 = 1.0;
+
 pub struct Quality {
+  pub benchmark_mode: String,
   pub level: Rc<RefCell<f32>>,
   pub weight_resolution: Rc<RefCell<f32>>,
   pub weight_msaa: Rc<RefCell<f32>>,
@@ -46,6 +49,7 @@ impl Quality {
     ) };
 
     Quality {
+      benchmark_mode: "".to_string(),
       level: Rc::new(RefCell::new(1.0)),
       weight_resolution: Rc::new(RefCell::new(weight_resolution)),
       weight_msaa: Rc::new(RefCell::new(weight_msaa)),
@@ -53,6 +57,11 @@ impl Quality {
 
       enable_supersampling: enable_supersampling,
     }
+  }
+
+  pub fn set_benchmark_mode(&mut self, mode: &str, level: f32) {
+    self.benchmark_mode = mode.to_string();
+    *self.level.borrow_mut() = level;
   }
 
   pub fn set_level(&self, predicted_remaining_time: u32, target_frame_time: u32) {
@@ -74,15 +83,33 @@ impl Quality {
   }
 
   pub fn get_target_resolution(&self) -> f32 {
-    let default_target = if self.enable_supersampling { 0.5 } else { 1.0 };
-    Quality::mix(*self.level.borrow(), default_target, *self.weight_resolution.borrow())
+    if self.benchmark_mode == "resolution" {
+      *self.level.borrow()
+    } else if self.benchmark_mode != "" {
+      BENCHMARK_BASE_LEVEL
+    } else {
+      let default_target = if self.enable_supersampling { 0.5 } else { 1.0 };
+      Quality::mix(*self.level.borrow(), default_target, *self.weight_resolution.borrow())
+    }
   }
 
   pub fn get_target_msaa(&self) -> f32 {
-    Quality::mix(*self.level.borrow(), 0.0, *self.weight_msaa.borrow())
+    if self.benchmark_mode == "msaa" {
+      *self.level.borrow()
+    } else if self.benchmark_mode != "" {
+      BENCHMARK_BASE_LEVEL
+    } else {
+      Quality::mix(*self.level.borrow(), 0.0, *self.weight_msaa.borrow())
+    }
   }
 
   pub fn get_target_lod(&self) -> f32 {
-    Quality::mix(*self.level.borrow(), 1.0, *self.weight_lod.borrow())
+    if self.benchmark_mode == "lod" {
+      *self.level.borrow()
+    } else if self.benchmark_mode != "" {
+      BENCHMARK_BASE_LEVEL
+    } else {
+      Quality::mix(*self.level.borrow(), 1.0, *self.weight_lod.borrow())
+    }
   }
 }

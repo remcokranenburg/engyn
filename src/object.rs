@@ -218,7 +218,7 @@ impl Object {
 
   pub fn draw<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], program: &Program,
-      render_params: &DrawParameters, num_lights: i32, lights: [Light; 32]) -> u32
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
       where S: Surface {
     let root = Matrix4::<f32>::identity();
     self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, program,
@@ -228,7 +228,7 @@ impl Object {
 
   fn draw_recurse<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>, program: &Program,
-      render_params: &DrawParameters, num_lights: i32, lights: [Light; 32]) -> u32
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
       where S: Surface {
     let model_transform = group * self.transform;
 
@@ -243,7 +243,7 @@ impl Object {
           metalness: m.material.metalness,
           reflectivity: m.material.reflectivity,
           num_lights: num_lights,
-          lights: lights,
+          lights: *lights,
         };
 
         match m.geometry.indices {
