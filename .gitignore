@@ -1,4 +1,10 @@
+# Build directory
 target
+
+# Benchmark data (but not template and database)
 performance/*.csv
 performance/*.demo
 performance/*.ods
+
+# LibreOffice lock files
+.~lock.*
