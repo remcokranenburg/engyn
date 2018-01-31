@@ -42,6 +42,7 @@ mod network_graph;
 mod object;
 mod performance;
 mod quality;
+mod resources;
 mod teapot;
 mod uniforms;
 
@@ -64,10 +65,8 @@ use glium::Depth;
 use glium::DepthTest;
 use glium::Display;
 use glium::DrawParameters;
-use glium::Program;
 use glium::Rect;
 use glium::Surface;
-use glium::backend::Facade;
 use glium::glutin::Event;
 use glium::glutin::EventsLoop;
 use glium::glutin::WindowEvent;
@@ -81,10 +80,9 @@ use glium::glutin::Window;
 use glium::glutin::WindowBuilder;
 use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
-use glium::texture::RawImage2d;
-use glium::texture::SrgbTexture2d;
 use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
+use std::cell::RefCell;
 use std::env;
 use std::path::Path;
 use std::f32;
@@ -113,14 +111,7 @@ use network_graph::Network;
 use object::Object;
 use performance::FramePerformance;
 use quality::Quality;
-
-fn load_texture(context: &Facade, name: &Path) -> SrgbTexture2d {
-  let image = image::open(name)
-    .expect(&format!("Could not open: {}", name.to_str().unwrap())).to_rgba();
-  let image_dimensions = image.dimensions();
-  let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-  SrgbTexture2d::new(context, image).unwrap()
-}
+use resources::ResourceManager;
 
 fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
   objects.iter().fold(0, |acc, o| acc + 1 + calculate_num_objects(&o.children))
@@ -152,7 +143,6 @@ fn draw_frame(
     trigger_button_was_pressed: &mut [bool; 2],
     event_counter: &mut u64,
     events_loop: &mut EventsLoop,
-    render_program: &Program,
     canvas: &mut AdaptiveCanvas,
     frame_performance: &mut FramePerformance,
     render_dimensions: &mut (u32, u32),
@@ -252,11 +242,11 @@ fn draw_frame(
       let quality_level = quality.get_target_lod();
       for object in world.iter_mut() {
         if quality_level > (i as f32 / num_objects as f32) {
-          i = object.draw(quality_level, i, num_objects, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+          i = object.draw(quality_level, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights);
         }
       }
 
-      empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+      empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
 
       network_graph.draw(display, &mut framebuffer, projection, view, &render_params);
       conic.draw(display, &mut framebuffer, projection, view, &render_params);
@@ -273,7 +263,7 @@ fn draw_frame(
         };
 
         gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-        gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_program, &render_params, num_lights, lights);
+        gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
 
         // handle gamepad input
 
@@ -593,6 +583,8 @@ fn main() {
     },
   };
 
+  let resource_manager = ResourceManager::new(&display);
+
   if !vr_mode {
     let (width, height) = window.get_inner_size().unwrap();
     let origin_x = width / 4;
@@ -610,21 +602,27 @@ fn main() {
   println!("Executable path: {}", project_path.to_str().unwrap());
 
   println!("Loading materials...");
-  let empty_material = Rc::new(Material {
-    albedo_map: load_texture(&display, &project_path.join("data").join("empty.bmp")),
+  let empty_path = project_path.join("data").join("empty.bmp");
+  let empty_path = resource_manager.get_texture(empty_path.to_str().unwrap()).unwrap();
+  let empty_material = Rc::new(RefCell::new(Material {
+    albedo_map: Rc::clone(&empty_path),
     metalness: 0.0,
     reflectivity: 0.0,
-  });
-  let marble_material = Rc::new(Material {
-    albedo_map: load_texture(&display, &project_path.join("data").join("marble.jpg")),
+  }));
+  let marble_path = project_path.join("data").join("marble.jpg");
+  let marble_texture = resource_manager.get_texture(marble_path.to_str().unwrap()).unwrap();
+  let marble_material = Rc::new(RefCell::new(Material {
+    albedo_map: Rc::clone(&marble_texture),
     metalness: 0.0,
     reflectivity: 0.0,
-  });
-  let terrain_material = Rc::new(Material {
-    albedo_map: load_texture(&display, &project_path.join("data").join("terrain.png")),
+  }));
+  let terrain_path = project_path.join("data").join("terrain.png");
+  let terrain_texture = resource_manager.get_texture(terrain_path.to_str().unwrap()).unwrap();
+  let terrain_material = Rc::new(RefCell::new(Material {
+    albedo_map: Rc::clone(&terrain_texture),
     metalness: 0.0,
     reflectivity: 0.0,
-  });
+  }));
   println!("Materials loaded!");
 
   let canvas_dimensions = if enable_supersampling {
@@ -635,105 +633,23 @@ fn main() {
 
   let mut canvas = AdaptiveCanvas::new(&display, canvas_dimensions.0, canvas_dimensions.1, 4);
 
-  let render_program = Program::from_source(
-      &display,
-      &r#"
-        #version 140
-
-        uniform mat4 projection;
-        uniform mat4 view;
-        uniform mat4 model;
-
-        in vec3 position;
-        in vec3 normal;
-        in vec2 texcoord;
-
-        out vec3 v_normal;
-        out vec2 v_texcoord;
-        out vec3 v_vertex_position;
-
-        void main() {
-          mat4 normal_matrix = transpose(inverse(model)); // TODO: put this in host code
-          vec4 position_global = model * vec4(position, 1.0);
-          vec4 position_eye = view * position_global;
-
-          v_texcoord = texcoord;
-          v_normal = vec3(normal_matrix * vec4(normal, 1.0));
-          v_vertex_position = vec3(position_global);
-          gl_Position = projection * position_eye;
-        }
-      "#,
-      &str::replace(r#"
-        #version 330
-        layout(std140) uniform;
-
-        const float SCREEN_GAMMA = 2.2;
-        const float INTENSITY = 20.0;
-
-        struct Light {
-          vec3 color;
-          vec3 position;
-        };
-
-        uniform sampler2D albedo_map;
-        uniform int num_lights;
-        uniform Light lights[MAX_NUM_LIGHTS];
-
-        in vec3 v_normal;
-        in vec2 v_texcoord;
-        in vec3 v_vertex_position;
-
-        out vec4 color;
-
-        vec3 attenuate(vec3 color, vec3 light_position, float radius, vec3 surface_position) {
-          float dist = distance(light_position, surface_position);
-          float attenuation_factor = clamp(1.0 - dist * dist / (radius * radius), 0.0, 1.0);
-          attenuation_factor *= attenuation_factor;
-          return color * attenuation_factor;
-        }
-
-        vec3 calculate_lighting(
-            vec3 light_position,
-            vec3 normal,
-            vec3 combined_color) {
-          vec3 light_direction = normalize(light_position - v_vertex_position);
-          float lambertian = max(dot(light_direction, normal), 0.0);
-          return lambertian * combined_color;
-        }
-
-        void main() {
-          vec3 normal = normalize(v_normal);
-          vec3 material_color = vec3(texture(albedo_map, v_texcoord));
-          vec3 color_linear = vec3(0.0);
-
-          for(int i = 0; i < num_lights; i++) {
-            vec3 color_one_light = calculate_lighting(lights[i].position, normal, lights[i].color * material_color);
-            color_one_light = attenuate(color_one_light, lights[i].position, INTENSITY, v_vertex_position);
-            color_linear += color_one_light;
-          }
-
-          vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
-          color = vec4(color_gamma_corrected, 1.0);
-        }
-      "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
-      None).unwrap();
-
   let mut world = Vec::new();
 
   if obj_filename != "" {
-    world.push(Object::from_file(&display, &obj_filename));
+    world.push(Object::from_file(&display, &resource_manager, &obj_filename));
   } else {
     // a triangle
-    world.push(Object::new_triangle(&display, Rc::clone(&marble_material), [1.0, 1.0], [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
+    world.push(Object::new_triangle(&display, &resource_manager, Rc::clone(&marble_material),
+        [1.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
 
     // a terrain mesh
     world.push(Object {
       children: Vec::new(),
-      mesh: Some(Mesh {
-        geometry: Geometry::from_obj(&display, "data/terrain.obj"),
-        material: terrain_material,
-      }),
+      mesh: Some(Mesh::new(
+          &display,
+          Geometry::from_obj(&display, "data/terrain.obj"),
+          Rc::clone(&terrain_material),
+          &resource_manager)),
       transform: Matrix4::<f32>::identity(),
     });
 
@@ -751,18 +667,19 @@ fn main() {
 
     let my_teapot = Object {
       children: Vec::new(),
-      mesh: Some(Mesh {
-        geometry: Geometry {
-          indices: Some(IndexBuffer::new(
-              &display,
-              PrimitiveType::TrianglesList,
-              &teapot::INDICES).unwrap()),
-          normals: VertexBuffer::new(&display, &teapot::NORMALS).unwrap(),
-          vertices: VertexBuffer::new(&display, &teapot::VERTICES).unwrap(),
-          texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
-        },
-        material: Rc::clone(&marble_material),
-      }),
+      mesh: Some(Mesh::new(
+          &display,
+          Geometry {
+            indices: Some(IndexBuffer::new(
+                &display,
+                PrimitiveType::TrianglesList,
+                &teapot::INDICES).unwrap()),
+            normals: VertexBuffer::new(&display, &teapot::NORMALS).unwrap(),
+            vertices: VertexBuffer::new(&display, &teapot::VERTICES).unwrap(),
+            texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
+          },
+          Rc::clone(&marble_material),
+          &resource_manager)),
       transform: Matrix4::new(
           0.005, 0.0, 0.0, 0.0,
           0.0, 0.005, 0.0, 0.0,
@@ -776,8 +693,8 @@ fn main() {
   let num_objects = calculate_num_objects(&world);
 
   // empty texture to force glutin clean
-  let mut empty = Object::new_plane(&display, Rc::clone(&empty_material), [0.0001,0.0001],
-      [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
+  let mut empty = Object::new_plane(&display, &resource_manager, Rc::clone(&empty_material),
+      [0.0001,0.0001], [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
 
   let mut network_graph = Network::new(&display, 200, 10);
   network_graph.transform = Matrix4::new(
@@ -825,10 +742,11 @@ fn main() {
     println!("We've found a gamepad!");
     gamepad_models.push(Object {
       children: Vec::new(),
-      mesh: Some(Mesh {
-        geometry: Geometry::from_obj(&display, "data/vive-controller.obj"),
-        material: Rc::clone(&marble_material),
-      }),
+      mesh: Some(Mesh::new(
+          &display,
+          Geometry::from_obj(&display, "data/vive-controller.obj"),
+          Rc::clone(&marble_material),
+          &resource_manager)),
       transform: Matrix4::<f32>::identity(),
     });
   }
@@ -852,9 +770,9 @@ fn main() {
               vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
               &lights, num_lights, &mut empty, &mut network_graph, &mut conic, &gamepads,
               &mut gamepad_models, &mut grip_button_was_pressed, &mut menu_button_was_pressed,
-              &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &render_program,
-              &mut canvas, &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui,
-              &mut demo, demo_record) {
+              &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &mut canvas,
+              &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo,
+              demo_record) {
             break;
           }
         }
@@ -873,9 +791,9 @@ fn main() {
           vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
           &lights, num_lights, &mut empty, &mut network_graph, &mut conic, &gamepads,
           &mut gamepad_models, &mut grip_button_was_pressed, &mut menu_button_was_pressed,
-          &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &render_program,
-          &mut canvas, &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui,
-          &mut demo, demo_record) {
+          &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &mut canvas,
+          &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo,
+          demo_record) {
         break;
       }
     }

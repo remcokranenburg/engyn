@@ -17,9 +17,11 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use glium::texture::SrgbTexture2d;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Material {
-  pub albedo_map: SrgbTexture2d,
+  pub albedo_map: Rc<RefCell<SrgbTexture2d>>,
   pub metalness: f32,
   pub reflectivity: f32,
 }

@@ -16,8 +16,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::time::Instant;
+use std::cmp;
 use std::fmt::Write;
+use std::time::Instant;
 
 const TARGET_FRAME_TIMES: [u32; 5] = [
     11_111_111u32,  // target for 90fps
@@ -113,7 +114,8 @@ impl FramePerformance {
       .subsec_nanos();
 
     let frame = &self.log[self.log.len() - 1];
-    let previous_remaining_time = frame.frame_time - frame.sync_poses_time - frame.sync_frame_data_time - frame.draw_time;
+    let previous_remaining_time = frame.frame_time - frame.sync_poses_time -
+        frame.sync_frame_data_time - frame.draw_time;
 
     let current_remaining_time = if self.get_target_frame_time() < current_frame_time {
       0
@@ -121,9 +123,9 @@ impl FramePerformance {
       self.get_target_frame_time() - current_frame_time
     };
 
-    let diff = current_remaining_time - previous_remaining_time;
+    let diff = current_remaining_time as i32 - previous_remaining_time as i32;
 
-    current_remaining_time + diff
+    cmp::max(0, current_remaining_time as i32 + diff) as u32
   }
 
   pub fn process_frame_end(&mut self) {

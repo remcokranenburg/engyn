@@ -21,22 +21,18 @@ use cgmath::Rad;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
-use glium::Program;
 use glium::Surface;
 use glium::DrawParameters;
 use glium::backend::Facade;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
 use glium::IndexBuffer;
-use glium::texture::SrgbTexture2d;
-use glium::texture::RawImage2d;
 use glium::VertexBuffer;
-use image;
+use std::cell::RefCell;
 use std::f32;
 use std::path::MAIN_SEPARATOR;
 use std::path::Path;
 use std::rc::Rc;
-use std::env;
 use tobj;
 
 use geometry::Geometry;
@@ -47,7 +43,15 @@ use light::Light;
 use material::Material;
 use math;
 use mesh::Mesh;
+use resources::ResourceManager;
 use uniforms::ObjectUniforms;
+
+pub trait Drawable {
+  fn draw<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
+      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
+      where S: Surface;
+}
 
 pub struct Object {
   pub children: Vec<Object>,
@@ -56,12 +60,8 @@ pub struct Object {
 }
 
 impl Object {
-  pub fn from_file(context: &Facade, filename: &str) -> Object {
-    // TODO: put this in a 'system integration' module
-    let executable_string = env::args().nth(0).unwrap();
-    let executable_path = Path::new(&executable_string).parent().unwrap();
-    let project_path = executable_path.parent().unwrap().parent().unwrap();
-
+  pub fn from_file<F>(context: &F, resource_manager: &ResourceManager, filename: &str) -> Object
+      where F: Facade {
     let mut objects = Vec::new();
     let mut materials = Vec::new();
 
@@ -73,23 +73,13 @@ impl Object {
     for mtl in mtls {
       let texture_filename = mtl.diffuse_texture.replace("\\", &MAIN_SEPARATOR.to_string());
       let texture_file = obj_path.join(&texture_filename);
+      let albedo_map = resource_manager.get_texture(texture_file.to_str().unwrap()).unwrap();
 
-      let image = image::open(&texture_file)
-        .unwrap_or({
-          println!("Could not open: {}", texture_file.to_str().unwrap());
-          image::open(&project_path.join("data").join("empty.bmp"))
-            .expect(&format!("  Also could not open the empty replacement texture"))
-        })
-        .to_rgba();
-      let image_dimensions = image.dimensions();
-      let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-      let albedo_map = SrgbTexture2d::new(context, image).unwrap();
-
-      materials.push(Rc::new(Material {
-        albedo_map: albedo_map,
+      materials.push(Rc::new(RefCell::new(Material {
+        albedo_map: Rc::clone(&albedo_map),
         metalness: 0.0,
         reflectivity: 0.0,
-      }));
+      })));
     }
 
     let mut min_pos = [f32::INFINITY; 3];
@@ -154,15 +144,16 @@ impl Object {
 
       objects.push(Object {
         children: Vec::new(),
-        mesh: Some(Mesh {
-          geometry: Geometry {
-            indices: indices,
-            normals: normals,
-            vertices: vertices,
-            texcoords: texcoords,
-          },
-          material: Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
-        }),
+        mesh: Some(Mesh::new(
+            context,
+            Geometry {
+              indices: indices,
+              normals: normals,
+              vertices: vertices,
+              texcoords: texcoords,
+            },
+            Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
+            resource_manager)),
         transform: Matrix4::<f32>::identity(),
       });
     }
@@ -181,8 +172,10 @@ impl Object {
     }
   }
 
-  pub fn new_plane(context: &Facade, material: Rc<Material>, size: [f32;2], pos: [f32;3],
-      rot: [f32;3], scale: [f32;3]) -> Object {
+  pub fn new_plane<F>(context: &F, resource_manager: &ResourceManager,
+      material: Rc<RefCell<Material>>, size: [f32;2], pos: [f32;3], rot: [f32;3], scale: [f32;3])
+      -> Object
+      where F: Facade {
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
     let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
     let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
@@ -190,16 +183,19 @@ impl Object {
 
     Object {
       children: Vec::new(),
-      mesh: Some(Mesh {
-        geometry: Geometry::new_quad(context, size, false),
-        material: Rc::clone(&material),
-      }),
+      mesh: Some(Mesh::new(
+          context,
+          Geometry::new_quad(context, size, false),
+          material,
+          resource_manager)),
       transform: matrix,
     }
   }
 
-  pub fn new_triangle(context: &Facade, material: Rc<Material>, size: [f32;2], pos: [f32;3],
-      rot: [f32;3], scale: [f32;3]) -> Object {
+  pub fn new_triangle<F>(context: &F, resource_manager: &ResourceManager,
+      material: Rc<RefCell<Material>>, size: [f32;2], pos: [f32;3], rot: [f32;3], scale: [f32;3])
+      -> Object
+      where F: Facade{
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
     let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
     let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
@@ -207,27 +203,28 @@ impl Object {
 
     Object {
       children: Vec::new(),
-      mesh: Some(Mesh {
-        geometry: Geometry::new_triangle(context, size),
-        material: Rc::clone(&material),
-      }),
+      mesh: Some(Mesh::new(
+          context,
+          Geometry::new_triangle(context, size),
+          material,
+          resource_manager)),
       transform: matrix,
     }
   }
 
 
   pub fn draw<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
-      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], program: &Program,
-      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
+      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], render_params: &DrawParameters,
+      num_lights: i32, lights: &[Light; 32]) -> u32
       where S: Surface {
     let root = Matrix4::<f32>::identity();
-    self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, program,
-        render_params, num_lights, lights)
+    self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, render_params,
+        num_lights, lights)
   }
 
 
   fn draw_recurse<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
-      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>, program: &Program,
+      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
       render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
       where S: Surface {
     let model_transform = group * self.transform;
@@ -235,13 +232,15 @@ impl Object {
     match self.mesh {
       Some(ref m) => {
 
+        let albedo_map = &m.material.borrow().albedo_map;
+
         let uniforms = ObjectUniforms {
           projection: projection,
           view: view,
           model: math::matrix_to_uniform(model_transform),
-          albedo_map: &m.material.albedo_map,
-          metalness: m.material.metalness,
-          reflectivity: m.material.reflectivity,
+          albedo_map: &albedo_map.borrow(),
+          metalness: m.material.borrow().metalness,
+          reflectivity: m.material.borrow().reflectivity,
           num_lights: num_lights,
           lights: *lights,
         };
@@ -250,13 +249,13 @@ impl Object {
           Some(ref indices) => target.draw(
             (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
             indices,
-            program,
+            &m.program.borrow(),
             &uniforms,
             render_params).unwrap(),
           None => target.draw(
             (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
             NoIndices(PrimitiveType::TrianglesList),
-            program,
+            &m.program.borrow(),
             &uniforms,
             render_params).unwrap(),
         }
@@ -268,7 +267,7 @@ impl Object {
     for object in &mut self.children {
       if quality_level > (result as f32 / num_objects as f32) {
         result = object.draw_recurse(quality_level, result, num_objects, target, projection, view,
-            model_transform, program, render_params, num_lights, lights);
+            model_transform, render_params, num_lights, lights);
       }
     }
     result
