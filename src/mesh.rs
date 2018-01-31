@@ -16,15 +16,25 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use cgmath::Matrix4;
+use glium::DrawParameters;
 use glium::Program;
 use glium::backend::Facade;
+use glium::framebuffer::SimpleFrameBuffer;
+use glium::index::NoIndices;
+use glium::index::PrimitiveType;
+use glium::Surface;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use geometry::Geometry;
+use light::Light;
 use material::Material;
+use math;
+use object::Drawable;
 use resources::ResourceManager;
 use uniforms;
+use uniforms::ObjectUniforms;
 
 pub struct Mesh {
   pub geometry: Geometry,
@@ -44,6 +54,40 @@ impl Mesh {
       geometry: geometry,
       material: material,
       program: Rc::clone(&program),
+    }
+  }
+}
+
+impl Drawable for Mesh {
+  fn draw(&mut self, target: &mut SimpleFrameBuffer,
+      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], model_transform: Matrix4<f32>,
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) {
+    let albedo_map = &self.material.borrow().albedo_map;
+
+    let uniforms = ObjectUniforms {
+      projection: projection,
+      view: view,
+      model: math::matrix_to_uniform(model_transform),
+      albedo_map: &albedo_map.borrow(),
+      metalness: self.material.borrow().metalness,
+      reflectivity: self.material.borrow().reflectivity,
+      num_lights: num_lights,
+      lights: *lights,
+    };
+
+    match self.geometry.indices {
+      Some(ref indices) => target.draw(
+        (&self.geometry.vertices, &self.geometry.normals, &self.geometry.texcoords),
+        indices,
+        &self.program.borrow(),
+        &uniforms,
+        render_params).unwrap(),
+      None => target.draw(
+        (&self.geometry.vertices, &self.geometry.normals, &self.geometry.texcoords),
+        NoIndices(PrimitiveType::TrianglesList),
+        &self.program.borrow(),
+        &uniforms,
+        render_params).unwrap(),
     }
   }
 }

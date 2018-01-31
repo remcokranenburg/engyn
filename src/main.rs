@@ -135,7 +135,6 @@ fn draw_frame(
     num_lights: i32,
     empty: &mut Object,
     network_graph: &mut Network,
-    conic: &mut Conic,
     gamepads: &Vec<VRGamepadPtr>,
     gamepad_models: &mut Vec<Object>,
     grip_button_was_pressed: &mut [bool; 2],
@@ -249,7 +248,6 @@ fn draw_frame(
       empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
 
       network_graph.draw(display, &mut framebuffer, projection, view, &render_params);
-      conic.draw(display, &mut framebuffer, projection, view, &render_params);
 
       for (i, ref gamepad) in gamepads.iter().enumerate() {
         let state = gamepad.borrow().state();
@@ -343,7 +341,6 @@ fn draw_frame(
   let predicted_remaining_time = frame_performance.process_draw_end();
 
   network_graph.update();
-  conic.update();
 
   // once every 100 frames, check for VR events
   *event_counter += 1;
@@ -408,10 +405,10 @@ fn draw_frame(
               Some(VirtualKeyCode::Down)      => if key_is_pressed { gui.select_next() },
               Some(VirtualKeyCode::Left)      => if key_is_pressed { gui.decrease_slider() },
               Some(VirtualKeyCode::Right)     => if key_is_pressed { gui.increase_slider() },
-              Some(VirtualKeyCode::H)         => if key_is_pressed { conic.decrease_eccentricity() },
-              Some(VirtualKeyCode::J)         => if key_is_pressed { conic.increase_eccentricity() },
-              Some(VirtualKeyCode::K)         => if key_is_pressed { conic.decrease_slr() },
-              Some(VirtualKeyCode::L)         => if key_is_pressed { conic.increase_slr() },
+              // Some(VirtualKeyCode::H)         => if key_is_pressed { conic.decrease_eccentricity() },
+              // Some(VirtualKeyCode::J)         => if key_is_pressed { conic.increase_eccentricity() },
+              // Some(VirtualKeyCode::K)         => if key_is_pressed { conic.decrease_slr() },
+              // Some(VirtualKeyCode::L)         => if key_is_pressed { conic.increase_slr() },
               Some(VirtualKeyCode::Return)    => if key_is_pressed {
                 let tmp_action = gui.activate();
 
@@ -645,11 +642,11 @@ fn main() {
     // a terrain mesh
     world.push(Object {
       children: Vec::new(),
-      mesh: Some(Mesh::new(
+      drawable: Some(Box::new(Mesh::new(
           &display,
           Geometry::from_obj(&display, "data/terrain.obj"),
           Rc::clone(&terrain_material),
-          &resource_manager)),
+          &resource_manager))),
       transform: Matrix4::<f32>::identity(),
     });
 
@@ -667,7 +664,7 @@ fn main() {
 
     let my_teapot = Object {
       children: Vec::new(),
-      mesh: Some(Mesh::new(
+      drawable: Some(Box::new(Mesh::new(
           &display,
           Geometry {
             indices: Some(IndexBuffer::new(
@@ -679,7 +676,7 @@ fn main() {
             texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
           },
           Rc::clone(&marble_material),
-          &resource_manager)),
+          &resource_manager))),
       transform: Matrix4::new(
           0.005, 0.0, 0.0, 0.0,
           0.0, 0.005, 0.0, 0.0,
@@ -688,6 +685,18 @@ fn main() {
     };
 
     world.push(my_teapot);
+
+    let my_conic = Object {
+        children: Vec::new(),
+        drawable: Some(Box::new(Conic::new(&display))),
+        transform: Matrix4::new(
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 1.0, -1.0, 1.0),
+    };
+
+    world.push(my_conic);
   }
 
   let num_objects = calculate_num_objects(&world);
@@ -702,13 +711,6 @@ fn main() {
       0.0, 1.0, 0.0, 0.0,
       0.0, 0.0, 1.0, 0.0,
       0.0, 1.0, 1.0, 1.0);
-
-  let mut conic = Conic::new(&display);
-  conic.transform = Matrix4::new(
-      1.0, 0.0, 0.0, 0.0,
-      0.0, 1.0, 0.0, 0.0,
-      0.0, 0.0, 1.0, 0.0,
-      0.0, 1.0, -1.0, 1.0);
 
   // add a light
 
@@ -742,11 +744,11 @@ fn main() {
     println!("We've found a gamepad!");
     gamepad_models.push(Object {
       children: Vec::new(),
-      mesh: Some(Mesh::new(
+      drawable: Some(Box::new(Mesh::new(
           &display,
           Geometry::from_obj(&display, "data/vive-controller.obj"),
           Rc::clone(&marble_material),
-          &resource_manager)),
+          &resource_manager))),
       transform: Matrix4::<f32>::identity(),
     });
   }
@@ -768,7 +770,7 @@ fn main() {
 
           if !draw_frame(benchmarking, feature, &quality, &perf_filename, &demo_filename, &mut vr,
               vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
-              &lights, num_lights, &mut empty, &mut network_graph, &mut conic, &gamepads,
+              &lights, num_lights, &mut empty, &mut network_graph, &gamepads,
               &mut gamepad_models, &mut grip_button_was_pressed, &mut menu_button_was_pressed,
               &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &mut canvas,
               &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo,
@@ -789,7 +791,7 @@ fn main() {
     loop {
       if !draw_frame(benchmarking, "", &quality, &perf_filename, &demo_filename, &mut vr,
           vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
-          &lights, num_lights, &mut empty, &mut network_graph, &mut conic, &gamepads,
+          &lights, num_lights, &mut empty, &mut network_graph, &gamepads,
           &mut gamepad_models, &mut grip_button_was_pressed, &mut menu_button_was_pressed,
           &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &mut canvas,
           &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo,

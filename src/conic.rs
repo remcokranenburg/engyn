@@ -17,9 +17,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use cgmath::Matrix4;
-use cgmath::SquareMatrix;
 use glium::backend::Facade;
 use glium::DrawParameters;
+use glium::framebuffer::SimpleFrameBuffer;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
 use glium::PolygonMode;
@@ -29,6 +29,8 @@ use glium::VertexBuffer;
 use std::f32;
 
 use math;
+use light::Light;
+use object::Drawable;
 
 #[derive(Copy, Clone)]
 pub struct ConicVertex {
@@ -41,7 +43,6 @@ pub struct Conic {
   pub theta: VertexBuffer<ConicVertex>,
   pub eccentricity: f32,
   pub semi_latus_rectum: f32,
-  pub transform: Matrix4<f32>,
 
   program: Program,
 }
@@ -106,7 +107,6 @@ impl Conic {
       theta: VertexBuffer::new(context, &theta_vertices).unwrap(),
       eccentricity: 1.0,
       semi_latus_rectum: 1.0,
-      transform: Matrix4::identity(),
 
       program: program,
     }
@@ -114,28 +114,6 @@ impl Conic {
 
   pub fn update(&mut self) -> bool {
     return true;
-  }
-
-  pub fn draw<S>(&mut self, _context: &Facade, target: &mut S, projection: [[f32; 4]; 4],
-      view: [[f32; 4]; 4], render_params: &DrawParameters) where S: Surface {
-    let uniforms = uniform! {
-      projection: projection,
-      view: view,
-      eccentricity: self.eccentricity,
-      semi_latus_rectum: self.semi_latus_rectum,
-      model: math::matrix_to_uniform(self.transform),
-    };
-
-    let mut point_render_params = render_params.clone();
-    point_render_params.point_size = Some(20.0);
-    point_render_params.polygon_mode = PolygonMode::Point;
-
-    target.draw(
-        &self.theta,
-        NoIndices(PrimitiveType::Points),
-        &self.program,
-        &uniforms,
-        &point_render_params).unwrap();
   }
 
   pub fn decrease_eccentricity(&mut self) {
@@ -156,5 +134,29 @@ impl Conic {
   pub fn increase_slr(&mut self) {
     self.semi_latus_rectum += 0.1;
     println!("semi latus rectum: {}", self.semi_latus_rectum);
+  }
+}
+
+impl Drawable for Conic {
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
+      model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32, _: &[Light; 32]) {
+    let uniforms = uniform! {
+      projection: projection,
+      view: view,
+      eccentricity: self.eccentricity,
+      semi_latus_rectum: self.semi_latus_rectum,
+      model: math::matrix_to_uniform(model_transform),
+    };
+
+    let mut point_render_params = render_params.clone();
+    point_render_params.point_size = Some(20.0);
+    point_render_params.polygon_mode = PolygonMode::Point;
+
+    target.draw(
+        &self.theta,
+        NoIndices(PrimitiveType::Points),
+        &self.program,
+        &uniforms,
+        &point_render_params).unwrap();
   }
 }

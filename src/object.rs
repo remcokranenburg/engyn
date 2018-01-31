@@ -21,10 +21,9 @@ use cgmath::Rad;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
-use glium::Surface;
 use glium::DrawParameters;
 use glium::backend::Facade;
-use glium::index::NoIndices;
+use glium::framebuffer::SimpleFrameBuffer;
 use glium::index::PrimitiveType;
 use glium::IndexBuffer;
 use glium::VertexBuffer;
@@ -41,21 +40,22 @@ use geometry::Vertex;
 use geometry::Texcoord;
 use light::Light;
 use material::Material;
-use math;
 use mesh::Mesh;
 use resources::ResourceManager;
-use uniforms::ObjectUniforms;
 
 pub trait Drawable {
-  fn draw<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
-      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
-      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
-      where S: Surface;
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
+      model_transform: Matrix4<f32>, render_params: &DrawParameters, num_lights: i32,
+      lights: &[Light; 32]);
+}
+
+pub trait Updatable {
+  fn update(&mut self, model_transform: Matrix4<f32>);
 }
 
 pub struct Object {
   pub children: Vec<Object>,
-  pub mesh: Option<Mesh>,
+  pub drawable: Option<Box<Drawable>>,
   pub transform: Matrix4<f32>,
 }
 
@@ -144,7 +144,7 @@ impl Object {
 
       objects.push(Object {
         children: Vec::new(),
-        mesh: Some(Mesh::new(
+        drawable: Some(Box::new(Mesh::new(
             context,
             Geometry {
               indices: indices,
@@ -153,7 +153,7 @@ impl Object {
               texcoords: texcoords,
             },
             Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
-            resource_manager)),
+            resource_manager))),
         transform: Matrix4::<f32>::identity(),
       });
     }
@@ -167,7 +167,7 @@ impl Object {
 
     Object {
       children: objects,
-      mesh: None,
+      drawable: None,
       transform: translation * scale,
     }
   }
@@ -183,11 +183,11 @@ impl Object {
 
     Object {
       children: Vec::new(),
-      mesh: Some(Mesh::new(
+      drawable: Some(Box::new(Mesh::new(
           context,
           Geometry::new_quad(context, size, false),
           material,
-          resource_manager)),
+          resource_manager))),
       transform: matrix,
     }
   }
@@ -203,63 +203,33 @@ impl Object {
 
     Object {
       children: Vec::new(),
-      mesh: Some(Mesh::new(
+      drawable: Some(Box::new(Mesh::new(
           context,
           Geometry::new_triangle(context, size),
           material,
-          resource_manager)),
+          resource_manager))),
       transform: matrix,
     }
   }
 
 
-  pub fn draw<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
+  pub fn draw(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], render_params: &DrawParameters,
-      num_lights: i32, lights: &[Light; 32]) -> u32
-      where S: Surface {
+      num_lights: i32, lights: &[Light; 32]) -> u32 {
     let root = Matrix4::<f32>::identity();
     self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, render_params,
         num_lights, lights)
   }
 
 
-  fn draw_recurse<S>(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut S,
+  fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
-      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32
-      where S: Surface {
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32 {
     let model_transform = group * self.transform;
 
-    match self.mesh {
-      Some(ref m) => {
-
-        let albedo_map = &m.material.borrow().albedo_map;
-
-        let uniforms = ObjectUniforms {
-          projection: projection,
-          view: view,
-          model: math::matrix_to_uniform(model_transform),
-          albedo_map: &albedo_map.borrow(),
-          metalness: m.material.borrow().metalness,
-          reflectivity: m.material.borrow().reflectivity,
-          num_lights: num_lights,
-          lights: *lights,
-        };
-
-        match m.geometry.indices {
-          Some(ref indices) => target.draw(
-            (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
-            indices,
-            &m.program.borrow(),
-            &uniforms,
-            render_params).unwrap(),
-          None => target.draw(
-            (&m.geometry.vertices, &m.geometry.normals, &m.geometry.texcoords),
-            NoIndices(PrimitiveType::TrianglesList),
-            &m.program.borrow(),
-            &uniforms,
-            render_params).unwrap(),
-        }
-      },
+    match self.drawable {
+      Some(ref mut d) => d.draw(target, projection, view, model_transform, render_params,
+          num_lights, lights),
       None => (),
     }
 
