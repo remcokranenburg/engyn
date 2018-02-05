@@ -38,6 +38,7 @@ use geometry::Geometry;
 use geometry::Normal;
 use geometry::Vertex;
 use geometry::Texcoord;
+use gui::Action;
 use light::Light;
 use material::Material;
 use mesh::Mesh;
@@ -47,10 +48,8 @@ pub trait Drawable {
   fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
       model_transform: Matrix4<f32>, render_params: &DrawParameters, num_lights: i32,
       lights: &[Light; 32]);
-}
 
-pub trait Updatable {
-  fn update(&mut self, model_transform: Matrix4<f32>);
+  fn update(&mut self, context: &Facade, model_transform: Matrix4<f32>, action: &Action);
 }
 
 pub struct Object {

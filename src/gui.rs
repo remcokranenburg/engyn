@@ -72,6 +72,14 @@ widget_ids! {
 
 #[derive(Clone, Copy)]
 pub enum Action {
+  ChangeWeight(f32),
+  ConicEccentricityIncrease,
+  ConicEccentricityDecrease,
+  ConicSlrIncrease,
+  ConicSlrDecrease,
+  GuiActivateMenuItem,
+  GuiSelectNext,
+  GuiToggleMenu,
   Quit,
   Resume,
   None,
@@ -333,7 +341,20 @@ impl<'a> Gui<'a> {
     self.ui.handle_event(event);
   }
 
-  pub fn select_previous(&mut self) {
+  pub fn process_action(&mut self, action: &Action) -> Action {
+    let mut result_action = action.clone();
+
+    match *action {
+      Action::GuiActivateMenuItem => { result_action = self.activate(); },
+      Action::GuiSelectNext => self.select_next(),
+      Action::GuiToggleMenu => self.is_visible = !self.is_visible,
+      _ => (),
+    }
+
+    result_action
+  }
+
+  fn select_previous(&mut self) {
     if self.selected_widget == 0 {
       self.selected_widget = self.widgets.len() - 1;
     } else {
@@ -341,7 +362,7 @@ impl<'a> Gui<'a> {
     }
   }
 
-  pub fn select_next(&mut self) {
+  fn select_next(&mut self) {
     if self.selected_widget == self.widgets.len() - 1 {
       self.selected_widget = 0;
     } else {
@@ -349,19 +370,19 @@ impl<'a> Gui<'a> {
     }
   }
 
-  pub fn decrease_slider(&mut self) {
+  fn decrease_slider(&mut self) {
     let weight = Rc::clone(&self.widgets[self.selected_widget].weight);
     let original_weight = *weight.borrow();
     *weight.borrow_mut() = f32::max(original_weight - 0.01, 0.0);
   }
 
-  pub fn increase_slider(&mut self) {
+  fn increase_slider(&mut self) {
     let weight = Rc::clone(&self.widgets[self.selected_widget].weight);
     let original_weight = *weight.borrow();
     *weight.borrow_mut() = f32::min(original_weight + 0.01, 1.0);
   }
 
-  pub fn activate(&mut self) -> Action {
+  fn activate(&mut self) -> Action {
     self.widgets[self.selected_widget].action
   }
 }

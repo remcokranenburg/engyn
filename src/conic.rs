@@ -28,6 +28,7 @@ use glium::Surface;
 use glium::VertexBuffer;
 use std::f32;
 
+use gui::Action;
 use math;
 use light::Light;
 use object::Drawable;
@@ -112,10 +113,6 @@ impl Conic {
     }
   }
 
-  pub fn update(&mut self) -> bool {
-    return true;
-  }
-
   pub fn decrease_eccentricity(&mut self) {
     self.eccentricity -= 0.1;
     println!("eccentricity: {}", self.eccentricity);
@@ -158,5 +155,15 @@ impl Drawable for Conic {
         &self.program,
         &uniforms,
         &point_render_params).unwrap();
+  }
+
+  fn update(&mut self, _: &Facade, _: Matrix4<f32>, action: &Action) {
+    match *action {
+      Action::ConicEccentricityIncrease => self.increase_eccentricity(),
+      Action::ConicEccentricityDecrease => self.decrease_eccentricity(),
+      Action::ConicSlrIncrease => self.increase_slr(),
+      Action::ConicSlrDecrease => self.decrease_slr(),
+      _ => (),
+    }
   }
 }

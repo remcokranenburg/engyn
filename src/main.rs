@@ -34,6 +34,7 @@ mod conic;
 mod demo;
 mod geometry;
 mod gui;
+mod input;
 mod light;
 mod material;
 mod math;
@@ -105,6 +106,7 @@ use geometry::Geometry;
 use geometry::Texcoord;
 use gui::Action;
 use gui::Gui;
+use input::InputHandler;
 use material::Material;
 use mesh::Mesh;
 use network_graph::Network;
@@ -115,6 +117,19 @@ use resources::ResourceManager;
 
 fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
   objects.iter().fold(0, |acc, o| acc + 1 + calculate_num_objects(&o.children))
+}
+
+fn update(display: &Display, world: &mut Vec<Object>, gui: &mut Gui, action: &Action) {
+  let action = gui.process_action(action);
+
+  for object in world {
+    match object.drawable {
+      Some(ref mut drawable) => drawable.update(display, object.transform, &action),
+      None => (),
+    };
+
+    update(display, &mut object.children, gui, &action);
+  }
 }
 
 fn draw_frame(
@@ -134,12 +149,8 @@ fn draw_frame(
     lights: &[Light; uniforms::MAX_NUM_LIGHTS],
     num_lights: i32,
     empty: &mut Object,
-    network_graph: &mut Network,
     gamepads: &Vec<VRGamepadPtr>,
     gamepad_models: &mut Vec<Object>,
-    grip_button_was_pressed: &mut [bool; 2],
-    menu_button_was_pressed: &mut [bool; 2],
-    trigger_button_was_pressed: &mut [bool; 2],
     event_counter: &mut u64,
     events_loop: &mut EventsLoop,
     canvas: &mut AdaptiveCanvas,
@@ -247,8 +258,6 @@ fn draw_frame(
 
       empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
 
-      network_graph.draw(display, &mut framebuffer, projection, view, &render_params);
-
       for (i, ref gamepad) in gamepads.iter().enumerate() {
         let state = gamepad.borrow().state();
         let rotation = match state.pose.orientation {
@@ -262,42 +271,6 @@ fn draw_frame(
 
         gamepad_models[i].transform = inverse_standing_transform * position * rotation;
         gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
-
-        // handle gamepad input
-
-        if state.buttons[0].pressed {
-          grip_button_was_pressed[i] = true;
-        } else if grip_button_was_pressed[i] {
-          grip_button_was_pressed[i] = false;
-          println!("grip button clicked");
-          gui.select_next();
-        }
-
-        if state.buttons[1].pressed {
-          menu_button_was_pressed[i] = true;
-        } else if menu_button_was_pressed[i] {
-          menu_button_was_pressed[i] = false;
-          println!("menu button clicked");
-          gui.is_visible = !gui.is_visible;
-        }
-
-        if state.axes[2] == 1.0 {
-          trigger_button_was_pressed[i] = true;
-        } else if trigger_button_was_pressed[i] {
-          trigger_button_was_pressed[i] = false;
-          println!("trigger button clicked");
-          let tmp_action = gui.activate();
-
-          match tmp_action {
-            Action::None => (),
-            _ => action = tmp_action,
-          }
-        }
-
-        if state.axes[0] > 0.0 {
-          let weight_ref = Rc::clone(&gui.widgets[gui.selected_widget].weight);
-          *weight_ref.borrow_mut() = state.axes[0] as f32;
-        }
       }
 
       canvas.resolve(display);
@@ -339,8 +312,6 @@ fn draw_frame(
   }
 
   let predicted_remaining_time = frame_performance.process_draw_end();
-
-  network_graph.update();
 
   // once every 100 frames, check for VR events
   *event_counter += 1;
@@ -401,22 +372,22 @@ fn draw_frame(
                       .expect("Could not grab mouse cursor");
                 }
               },
-              Some(VirtualKeyCode::Up)        => if key_is_pressed { gui.select_previous() },
-              Some(VirtualKeyCode::Down)      => if key_is_pressed { gui.select_next() },
-              Some(VirtualKeyCode::Left)      => if key_is_pressed { gui.decrease_slider() },
-              Some(VirtualKeyCode::Right)     => if key_is_pressed { gui.increase_slider() },
+              // Some(VirtualKeyCode::Up)        => if key_is_pressed { gui.select_previous() },
+              // Some(VirtualKeyCode::Down)      => if key_is_pressed { gui.select_next() },
+              // Some(VirtualKeyCode::Left)      => if key_is_pressed { gui.decrease_slider() },
+              // Some(VirtualKeyCode::Right)     => if key_is_pressed { gui.increase_slider() },
               // Some(VirtualKeyCode::H)         => if key_is_pressed { conic.decrease_eccentricity() },
               // Some(VirtualKeyCode::J)         => if key_is_pressed { conic.increase_eccentricity() },
               // Some(VirtualKeyCode::K)         => if key_is_pressed { conic.decrease_slr() },
               // Some(VirtualKeyCode::L)         => if key_is_pressed { conic.increase_slr() },
-              Some(VirtualKeyCode::Return)    => if key_is_pressed {
-                let tmp_action = gui.activate();
-
-                match tmp_action {
-                  Action::None => (),
-                  _ => action = tmp_action,
-                }
-              },
+              // Some(VirtualKeyCode::Return)    => if key_is_pressed {
+              //   let tmp_action = gui.activate();
+              //
+              //   match tmp_action {
+              //     Action::None => (),
+              //     _ => action = tmp_action,
+              //   }
+              // },
 
               // activate while key is pressed
               Some(VirtualKeyCode::W) => fps_camera.forward = key_is_pressed,
@@ -465,7 +436,7 @@ fn draw_frame(
         window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
       }
     },
-    Action::None => (),
+    _ => (),
   }
 
   if !benchmarking {
@@ -697,6 +668,18 @@ fn main() {
     };
 
     world.push(my_conic);
+
+    let my_network = Object {
+        children: Vec::new(),
+        drawable: Some(Box::new(Network::new(&display, 200, 10))),
+        transform: Matrix4::new(
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 1.0, 1.0, 1.0),
+    };
+
+    world.push(my_network);
   }
 
   let num_objects = calculate_num_objects(&world);
@@ -704,13 +687,6 @@ fn main() {
   // empty texture to force glutin clean
   let mut empty = Object::new_plane(&display, &resource_manager, Rc::clone(&empty_material),
       [0.0001,0.0001], [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
-
-  let mut network_graph = Network::new(&display, 200, 10);
-  network_graph.transform = Matrix4::new(
-      1.0, 0.0, 0.0, 0.0,
-      0.0, 1.0, 0.0, 0.0,
-      0.0, 0.0, 1.0, 0.0,
-      0.0, 1.0, 1.0, 1.0);
 
   // add a light
 
@@ -733,9 +709,6 @@ fn main() {
 
   // create a model for each gamepad
   let gamepads = vr.get_gamepads();
-  let mut grip_button_was_pressed = [false, false];
-  let mut menu_button_was_pressed = [false, false];
-  let mut trigger_button_was_pressed = [false, false];
   let mut gamepad_models = Vec::new();
 
   println!("Found {} controller{}!", gamepads.len(), match gamepads.len() { 1 => "", _ => "s" });
@@ -753,6 +726,7 @@ fn main() {
     });
   }
 
+  let mut input_handler = InputHandler::new(gamepads.len());
   let mut quality = Quality::new(weights, enable_supersampling);
   let mut gui = Gui::new(&display, Rc::clone(&quality.weight_resolution),
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
@@ -768,13 +742,17 @@ fn main() {
           canvas.set_resolution_scale(quality.get_target_resolution());
           canvas.set_msaa_scale(quality.get_target_msaa());
 
+          let action = input_handler.process(&gamepads);
+          // TODO: update_camera()
+          // TODO: maybe merge benchmark and non-benchmark loops again
+
+          update(&display, &mut world, &mut gui, &action);
+
           if !draw_frame(benchmarking, feature, &quality, &perf_filename, &demo_filename, &mut vr,
               vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
-              &lights, num_lights, &mut empty, &mut network_graph, &gamepads,
-              &mut gamepad_models, &mut grip_button_was_pressed, &mut menu_button_was_pressed,
-              &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &mut canvas,
-              &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo,
-              demo_record) {
+              &lights, num_lights, &mut empty, &gamepads, &mut gamepad_models,&mut event_counter,
+              &mut events_loop, &mut canvas, &mut frame_performance, &mut render_dimensions,
+              &mut fps_camera, &mut gui, &mut demo, demo_record) {
             break;
           }
         }
@@ -789,13 +767,17 @@ fn main() {
 
   } else {
     loop {
+      let action = input_handler.process(&gamepads);
+      // TODO: update_camera()
+      // TODO: maybe merge benchmark and non-benchmark loops again
+
+      update(&display, &mut world, &mut gui, &action);
+
       if !draw_frame(benchmarking, "", &quality, &perf_filename, &demo_filename, &mut vr,
           vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
-          &lights, num_lights, &mut empty, &mut network_graph, &gamepads,
-          &mut gamepad_models, &mut grip_button_was_pressed, &mut menu_button_was_pressed,
-          &mut trigger_button_was_pressed, &mut event_counter, &mut events_loop, &mut canvas,
-          &mut frame_performance, &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo,
-          demo_record) {
+          &lights, num_lights, &mut empty, &gamepads, &mut gamepad_models, &mut event_counter,
+          &mut events_loop, &mut canvas, &mut frame_performance, &mut render_dimensions,
+          &mut fps_camera, &mut gui, &mut demo, demo_record) {
         break;
       }
     }

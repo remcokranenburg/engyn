@@ -17,9 +17,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use cgmath::Matrix4;
-use cgmath::SquareMatrix;
 use glium::backend::Facade;
 use glium::DrawParameters;
+use glium::framebuffer::SimpleFrameBuffer;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
 use glium::PolygonMode;
@@ -33,7 +33,10 @@ use rand::Rng;
 use std::f32;
 
 use geometry::Vertex;
+use gui::Action;
+use light::Light;
 use math;
+use object::Drawable;
 
 pub struct Node {
   pub vertex: Vertex,
@@ -44,9 +47,9 @@ pub struct Node {
 pub struct Network {
   pub nodes: Vec<Node>,
   pub links: Vec<(usize, usize)>,
-  pub transform: Matrix4<f32>,
 
   program: Program,
+  nodes_buffer: VertexBuffer<Vertex>,
 
   // simulation
   alpha: f32,
@@ -115,9 +118,9 @@ impl Network {
     Network {
       nodes: nodes,
       links: links,
-      transform: Matrix4::identity(),
 
       program: program,
+      nodes_buffer: VertexBuffer::empty_dynamic(context, 0).unwrap(),
 
       alpha: 0.1,
       alpha_decay: 1.0 - f32::powf(0.001, 1.0 / 600.0),
@@ -174,63 +177,6 @@ impl Network {
     }
   }
 
-  pub fn update(&mut self) -> bool {
-    if self.alpha < self.alpha_min {
-      let num_nodes = self.nodes.len();
-      self.alpha = 0.1;
-      self.nodes = Vec::new();
-      Network::initialize_nodes(&mut self.nodes, num_nodes);
-      return false;
-    }
-
-    self.alpha += (self.alpha_target - self.alpha) * self.alpha_decay;
-
-    self.gravity_force();
-    self.many_bodies_force();
-
-    for ref mut node in &mut self.nodes {
-      if !node.fixed {
-        node.velocity.0 *= self.velocity_decay;
-        node.vertex.position.0 += node.velocity.0;
-        node.velocity.1 *= self.velocity_decay;
-        node.vertex.position.1 += node.velocity.1;
-        node.velocity.2 *= self.velocity_decay;
-        node.vertex.position.2 += node.velocity.2;
-      }
-    }
-
-    return true;
-  }
-
-  pub fn draw<S>(&mut self, context: &Facade, target: &mut S, projection: [[f32; 4]; 4],
-      view: [[f32; 4]; 4], render_params: &DrawParameters) where S: Surface {
-    let uniforms = uniform! {
-      projection: projection,
-      view: view,
-      model: math::matrix_to_uniform(self.transform),
-    };
-
-    let mut point_render_params = render_params.clone();
-    point_render_params.point_size = Some(20.0);
-    point_render_params.polygon_mode = PolygonMode::Point;
-
-    let mut nodes_buffer = VertexBuffer::empty_dynamic(context, self.nodes.len()).unwrap();
-
-    {
-      let mut mapped = nodes_buffer.map();
-      for (i, node) in self.nodes.iter().enumerate() {
-        mapped[i] = node.vertex;
-      }
-    }
-
-    target.draw(
-        &nodes_buffer,
-        NoIndices(PrimitiveType::Points),
-        &self.program,
-        &uniforms,
-        &point_render_params).unwrap();
-  }
-
   fn jiggle() -> f32 {
     let mut rng = rand::thread_rng();
     (rng.next_f32() - 0.5) * 1e-6
@@ -254,6 +200,60 @@ impl Network {
       let src_index = link_range.ind_sample(&mut rng);
       let dst_index = link_range.ind_sample(&mut rng);
       links.push((src_index, dst_index));
+    }
+  }
+}
+
+impl Drawable for Network {
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
+      model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32, _: &[Light; 32]) {
+    let uniforms = uniform! {
+      projection: projection,
+      view: view,
+      model: math::matrix_to_uniform(model_transform),
+    };
+
+    let mut point_render_params = render_params.clone();
+    point_render_params.point_size = Some(20.0);
+    point_render_params.polygon_mode = PolygonMode::Point;
+
+    target.draw(
+        &self.nodes_buffer,
+        NoIndices(PrimitiveType::Points),
+        &self.program,
+        &uniforms,
+        &point_render_params).unwrap();
+  }
+
+  fn update(&mut self, context: &Facade, _: Matrix4<f32>, _: &Action) {
+    if self.alpha < self.alpha_min {
+      let num_nodes = self.nodes.len();
+      self.alpha = 0.1;
+      self.nodes = Vec::new();
+      Network::initialize_nodes(&mut self.nodes, num_nodes);
+    }
+
+    self.alpha += (self.alpha_target - self.alpha) * self.alpha_decay;
+
+    self.gravity_force();
+    self.many_bodies_force();
+
+    for ref mut node in &mut self.nodes {
+      if !node.fixed {
+        node.velocity.0 *= self.velocity_decay;
+        node.vertex.position.0 += node.velocity.0;
+        node.velocity.1 *= self.velocity_decay;
+        node.vertex.position.1 += node.velocity.1;
+        node.velocity.2 *= self.velocity_decay;
+        node.vertex.position.2 += node.velocity.2;
+      }
+    }
+
+    self.nodes_buffer = VertexBuffer::empty_dynamic(context, self.nodes.len()).unwrap();
+
+    let mut mapped = self.nodes_buffer.map();
+    for (i, node) in self.nodes.iter().enumerate() {
+      mapped[i] = node.vertex;
     }
   }
 }

@@ -28,6 +28,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use geometry::Geometry;
+use gui::Action;
 use light::Light;
 use material::Material;
 use math;
@@ -90,6 +91,8 @@ impl Drawable for Mesh {
         render_params).unwrap(),
     }
   }
+
+  fn update(&mut self, _: &Facade, _: Matrix4<f32>, _: &Action) {}
 }
 
 fn construct_program<F>(display: &F) -> Program
