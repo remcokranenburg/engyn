@@ -23,6 +23,7 @@ use glium::texture::SrgbTexture2d;
 use image;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::error::Error;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -50,6 +51,7 @@ impl<'a> ResourceManager<'a> {
 
   pub fn get_program(&self, path: &str, compile: &Fn() -> Program)
       -> Result<Rc<RefCell<Program>>, &str> {
+    println!("get_program: {}", path);
     if self.resources.borrow().contains_key(path) {
       match self.resources.borrow().get(path) {
         Some(&Resource::Program(ref p)) => Ok(Rc::clone(p)),
@@ -70,6 +72,7 @@ impl<'a> ResourceManager<'a> {
    */
 
   pub fn get_texture(&self, path: &str) -> Result<Rc<RefCell<SrgbTexture2d>>, &str> {
+    println!("get_texture: {}", path);
     if self.resources.borrow().contains_key(path) {
       match self.resources.borrow().get(path) {
         Some(&Resource::SrgbTexture2d(ref t)) => Ok(Rc::clone(t)),
@@ -78,19 +81,34 @@ impl<'a> ResourceManager<'a> {
       }
     } else {
       let texture = self.load_texture(Path::new(path));
-      self.resources.borrow_mut().insert(path.to_string(), Resource::SrgbTexture2d(Rc::new(RefCell::new(texture))));
-      match self.resources.borrow().get(path) {
-        Some(&Resource::SrgbTexture2d(ref t)) => Ok(Rc::clone(t)),
-        _ => panic!()
+
+      match texture {
+        Ok(t) => {
+          self.resources.borrow_mut().insert(
+              path.to_string(),
+              Resource::SrgbTexture2d(Rc::new(RefCell::new(t))));
+          match self.resources.borrow().get(path) {
+            Some(&Resource::SrgbTexture2d(ref tref)) => Ok(Rc::clone(tref)),
+            _ => panic!()
+          }
+        },
+        _ => {
+          eprintln!("Could not load texture: {}", path);
+          match self.resources.borrow().get("data\\empty.bmp") {
+            Some(&Resource::SrgbTexture2d(ref tref)) => Ok(Rc::clone(tref)),
+            _ => panic!()
+          }
+        }
       }
     }
   }
 
-  fn load_texture(&self, name: &Path) -> SrgbTexture2d {
-    let image = image::open(name)
-      .expect(&format!("Could not open: {}", name.to_str().unwrap())).to_rgba();
+  fn load_texture(&self, name: &Path) -> Result<SrgbTexture2d, Box<Error>> {
+    let image = image::open(name)?.to_rgba();
     let image_dimensions = image.dimensions();
     let image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-    SrgbTexture2d::new(self.context, image).unwrap()
+    let texture = SrgbTexture2d::new(self.context, image)?;
+
+    Ok(texture)
   }
 }
