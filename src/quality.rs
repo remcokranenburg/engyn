@@ -20,6 +20,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::f32;
 
+use performance::FramePerformance;
+
 const BENCHMARK_BASE_LEVEL: f32 = 1.0;
 
 pub struct Quality {
@@ -64,15 +66,19 @@ impl Quality {
     *self.level.borrow_mut() = level;
   }
 
-  pub fn set_level(&self, predicted_remaining_time: u32, target_frame_time: u32) {
+  pub fn set_level(&self, frame_performance: &FramePerformance) {
+    let predicted_remaining_time = frame_performance.get_predicted_remaining_time();
+    let target_frame_time = frame_performance.get_target_frame_time();
     let ratio_remaining = predicted_remaining_time as f32 / target_frame_time as f32;
 
     let original_level = *self.level.borrow();
 
     if ratio_remaining < 0.05 {
-      *self.level.borrow_mut() = f32::max(original_level * 0.5, 0.0);
+      *self.level.borrow_mut() = f32::max(original_level * 0.5, 0.0001);
     } else if ratio_remaining < 0.2 {
-      *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0);
+      *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0001);
+    } else if ratio_remaining > 0.8 {
+      *self.level.borrow_mut() = f32::min(original_level * 2.0, 1.0);
     } else {
       *self.level.borrow_mut() = f32::min(original_level * 1.01, 1.0);
     }

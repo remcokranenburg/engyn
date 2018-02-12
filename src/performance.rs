@@ -107,25 +107,8 @@ impl FramePerformance {
     self.time_draw_start = Instant::now();
   }
 
-  pub fn process_draw_end(&mut self) -> u32 {
+  pub fn process_draw_end(&mut self) {
     self.time_draw_end = Instant::now();
-
-    let current_frame_time = self.time_draw_end.duration_since(self.time_sync_poses)
-      .subsec_nanos();
-
-    let frame = &self.log[self.log.len() - 1];
-    let previous_remaining_time = frame.frame_time - frame.sync_poses_time -
-        frame.sync_frame_data_time - frame.draw_time;
-
-    let current_remaining_time = if self.get_target_frame_time() < current_frame_time {
-      0
-    } else {
-      self.get_target_frame_time() - current_frame_time
-    };
-
-    let diff = current_remaining_time as i32 - previous_remaining_time as i32;
-
-    cmp::max(0, current_remaining_time as i32 + diff) as u32
   }
 
   pub fn process_frame_end(&mut self) {
@@ -134,6 +117,25 @@ impl FramePerformance {
 
   pub fn get_frame_number(&self) -> i32 {
     self.frame_count
+  }
+
+  pub fn get_predicted_remaining_time(&self) -> u32 {
+    let mut log_rev_iter = self.log.iter().rev();
+
+    let last_draw_time = match log_rev_iter.next() {
+      Some(entry) => entry.draw_time as i32,
+      None => 0,
+    };
+
+    let second_to_last_draw_time = match log_rev_iter.next() {
+      Some(entry) => entry.draw_time as i32,
+      None => 0,
+    };
+
+    let diff = last_draw_time - second_to_last_draw_time;
+
+    // predict next remaining time as: target - (last draw time + diff)
+    cmp::max(0, self.get_target_frame_time() as i32 - (last_draw_time + diff)) as u32
   }
 
   pub fn get_target_frame_time(&self) -> u32 {

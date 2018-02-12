@@ -20,6 +20,9 @@ use cgmath::Matrix4;
 use cgmath::Rad;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
+use std::f32;
+
+use gui::Action;
 
 pub struct FpsCamera {
   pub forward: bool,
@@ -63,5 +66,21 @@ impl FpsCamera {
     self.position = Vector3::new(m.w.x, m.w.y, m.w.z);
 
     m.invert().unwrap()
+  }
+
+  pub fn process_actions(&mut self, actions: &Vec<Action>) {
+    for action in actions {
+      match *action {
+        Action::CameraRotate { pitch, yaw } => {
+          self.pitch = Rad((self.pitch + pitch).0.max(-f32::consts::PI / 2.0).min(f32::consts::PI / 2.0));
+          self.yaw += yaw;
+        },
+        Action::CameraMoveForward(is_enabled) => self.forward = is_enabled,
+        Action::CameraMoveBackward(is_enabled) => self.backward = is_enabled,
+        Action::CameraMoveLeft(is_enabled) => self.left = is_enabled,
+        Action::CameraMoveRight(is_enabled) => self.right = is_enabled,
+        _ => (),
+      }
+    }
   }
 }

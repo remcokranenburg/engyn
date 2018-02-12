@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use cgmath::Rad;
 use conrod::backend::glium::Renderer;
 use conrod::color;
 use conrod::Colorable;
@@ -42,6 +43,9 @@ use conrod::widget::Slider;
 use conrod::widget::Text;
 use glium::Display;
 use glium::BlitTarget;
+use glium::glutin::CursorState;
+use glium::glutin::MouseCursor;
+use glium::glutin::Window;
 use glium::Rect;
 use glium::Surface;
 use glium::texture::Texture2d;
@@ -72,15 +76,24 @@ widget_ids! {
 
 #[derive(Clone, Copy)]
 pub enum Action {
+  CameraMoveBackward(bool),
+  CameraMoveForward(bool),
+  CameraMoveLeft(bool),
+  CameraMoveRight(bool),
+  CameraRotate { pitch: Rad<f32>, yaw: Rad<f32> },
   ChangeWeight(f32),
   ConicEccentricityIncrease,
   ConicEccentricityDecrease,
   ConicSlrIncrease,
   ConicSlrDecrease,
   GuiActivateMenuItem,
+  GuiSelectPrevious,
   GuiSelectNext,
+  GuiDecreaseSlider,
+  GuiIncreaseSlider,
   GuiToggleMenu,
   Quit,
+  Resize(u32, u32),
   Resume,
   None,
 }
@@ -341,17 +354,67 @@ impl<'a> Gui<'a> {
     self.ui.handle_event(event);
   }
 
-  pub fn process_action(&mut self, action: &Action) -> Action {
+  pub fn process_gui_action(&mut self, action: &Action, window: &Window, vr_mode: bool) -> Action {
     let mut result_action = action.clone();
 
     match *action {
       Action::GuiActivateMenuItem => { result_action = self.activate(); },
+      Action::GuiSelectPrevious => self.select_previous(),
       Action::GuiSelectNext => self.select_next(),
-      Action::GuiToggleMenu => self.is_visible = !self.is_visible,
+      Action::GuiDecreaseSlider => self.decrease_slider(),
+      Action::GuiIncreaseSlider => self.increase_slider(),
+      Action::GuiToggleMenu => self.toggle(window, vr_mode),
       _ => (),
     }
 
     result_action
+  }
+
+  pub fn process_actions(&mut self, actions: &Vec<Action>, window: &Window, vr_mode: bool)
+      -> Vec<Action> {
+    let mut result_actions = Vec::new();
+
+    for action in actions {
+      match *action {
+        Action::GuiActivateMenuItem => { result_actions.push(self.activate()) },
+        Action::GuiSelectPrevious => self.select_previous(),
+        Action::GuiSelectNext => self.select_next(),
+        Action::GuiDecreaseSlider => self.decrease_slider(),
+        Action::GuiIncreaseSlider => self.increase_slider(),
+        Action::GuiToggleMenu => self.toggle(window, vr_mode),
+        _ => (),
+      }
+    }
+
+    result_actions
+  }
+
+  fn toggle(&mut self, window: &Window, vr_mode: bool) {
+    self.is_visible = !self.is_visible;
+
+    if !vr_mode {
+      let (width, height) = window.get_inner_size().unwrap();
+      let center_x = (width / 2) as i32;
+      let center_y = (height / 2) as i32;
+      let origin_x = (width / 4) as i32;
+      let origin_y = (height / 4) as i32;
+
+
+      if self.is_visible {
+        window.set_cursor_position(center_x, center_y).unwrap();
+        window.set_cursor(MouseCursor::Default);
+        window.set_cursor_state(CursorState::Normal).ok().expect("Could not ungrab mouse cursor");
+      } else {
+        window.set_cursor(MouseCursor::NoneCursor);
+
+        // It is important to reset the cursor to the origin before using the mouse movements for
+        // camera rotations, since we don't want the camera to move based on mouse movements made
+        // while in the GUI.
+        window.set_cursor_position(origin_x, origin_y).unwrap();
+
+        window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
+      }
+    }
   }
 
   fn select_previous(&mut self) {

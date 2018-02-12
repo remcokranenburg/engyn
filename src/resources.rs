@@ -94,10 +94,7 @@ impl<'a> ResourceManager<'a> {
         },
         _ => {
           eprintln!("Could not load texture: {}", path);
-          match self.resources.borrow().get("data\\empty.bmp") {
-            Some(&Resource::SrgbTexture2d(ref tref)) => Ok(Rc::clone(tref)),
-            _ => panic!()
-          }
+          Ok(Rc::new(RefCell::new(SrgbTexture2d::empty(self.context, 1, 1).unwrap())))
         }
       }
     }

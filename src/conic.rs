@@ -157,13 +157,15 @@ impl Drawable for Conic {
         &point_render_params).unwrap();
   }
 
-  fn update(&mut self, _: &Facade, _: Matrix4<f32>, action: &Action) {
-    match *action {
-      Action::ConicEccentricityIncrease => self.increase_eccentricity(),
-      Action::ConicEccentricityDecrease => self.decrease_eccentricity(),
-      Action::ConicSlrIncrease => self.increase_slr(),
-      Action::ConicSlrDecrease => self.decrease_slr(),
-      _ => (),
+  fn update(&mut self, _: &Facade, _: Matrix4<f32>, actions: &Vec<Action>) {
+    for action in actions {
+      match *action {
+        Action::ConicEccentricityIncrease => self.increase_eccentricity(),
+        Action::ConicEccentricityDecrease => self.decrease_eccentricity(),
+        Action::ConicSlrIncrease => self.increase_slr(),
+        Action::ConicSlrDecrease => self.decrease_slr(),
+        _ => (),
+      }
     }
   }
 }

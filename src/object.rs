@@ -49,7 +49,7 @@ pub trait Drawable {
       model_transform: Matrix4<f32>, render_params: &DrawParameters, num_lights: i32,
       lights: &[Light; 32]);
 
-  fn update(&mut self, context: &Facade, model_transform: Matrix4<f32>, action: &Action);
+  fn update(&mut self, context: &Facade, model_transform: Matrix4<f32>, actions: &Vec<Action>);
 }
 
 pub struct Object {

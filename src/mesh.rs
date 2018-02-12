@@ -92,7 +92,7 @@ impl Drawable for Mesh {
     }
   }
 
-  fn update(&mut self, _: &Facade, _: Matrix4<f32>, _: &Action) {}
+  fn update(&mut self, _: &Facade, _: Matrix4<f32>, _: &Vec<Action>) {}
 }
 
 fn construct_program<F>(display: &F) -> Program

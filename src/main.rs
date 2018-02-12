@@ -68,15 +68,10 @@ use glium::Display;
 use glium::DrawParameters;
 use glium::Rect;
 use glium::Surface;
-use glium::glutin::Event;
 use glium::glutin::EventsLoop;
-use glium::glutin::WindowEvent;
-use glium::glutin::KeyboardInput;
 use glium::glutin::MouseCursor;
 use glium::glutin::ContextBuilder;
 use glium::glutin::CursorState;
-use glium::glutin::ElementState;
-use glium::glutin::VirtualKeyCode;
 use glium::glutin::Window;
 use glium::glutin::WindowBuilder;
 use glium::index::IndexBuffer;
@@ -84,15 +79,11 @@ use glium::index::PrimitiveType;
 use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
 use std::cell::RefCell;
-use std::env;
-use std::path::Path;
 use std::f32;
 use std::fs::File;
 use std::io::prelude::*;
 use std::rc::Rc;
-use webvr::VREvent;
 use webvr::VRDisplayPtr;
-use webvr::VRDisplayEvent;
 use webvr::VRGamepadPtr;
 use webvr::VRServiceManager;
 
@@ -119,26 +110,24 @@ fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
   objects.iter().fold(0, |acc, o| acc + 1 + calculate_num_objects(&o.children))
 }
 
-fn update(display: &Display, world: &mut Vec<Object>, gui: &mut Gui, action: &Action) {
-  let action = gui.process_action(action);
+fn update_camera(fps_camera: &mut FpsCamera, actions: &Vec<Action>) {
+  fps_camera.process_actions(actions);
+}
 
+fn update_world(display: &Display, world: &mut Vec<Object>, gui: &mut Gui, actions: &Vec<Action>) {
   for object in world {
     match object.drawable {
-      Some(ref mut drawable) => drawable.update(display, object.transform, &action),
+      Some(ref mut drawable) => drawable.update(display, object.transform, actions),
       None => (),
     };
 
-    update(display, &mut object.children, gui, &action);
+    update_world(display, &mut object.children, gui, actions);
   }
 }
 
 fn draw_frame(
-    benchmarking: bool,
     feature: &str,
     quality: &Quality,
-    perf_filename: &str,
-    demo_filename: &str,
-    vr: &mut VRServiceManager,
     vr_mode: bool,
     vr_display: Option<&VRDisplayPtr>,
     display: &Display,
@@ -151,20 +140,17 @@ fn draw_frame(
     empty: &mut Object,
     gamepads: &Vec<VRGamepadPtr>,
     gamepad_models: &mut Vec<Object>,
-    event_counter: &mut u64,
-    events_loop: &mut EventsLoop,
     canvas: &mut AdaptiveCanvas,
     frame_performance: &mut FramePerformance,
     render_dimensions: &mut (u32, u32),
     fps_camera: &mut FpsCamera,
     gui: &mut Gui,
     demo: &mut Option<Demo>,
-    demo_record: bool) -> bool {
+    demo_record: bool) {
   frame_performance.process_frame_start(feature, *quality.level.borrow());
 
   let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
   let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
-  let mut action;
 
   let (
       standing_transform,
@@ -213,8 +199,6 @@ fn draw_frame(
 
   let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
 
-  action = gui.prepare(*quality.level.borrow());
-
   frame_performance.process_draw_start();
 
   // record demo entry
@@ -249,10 +233,10 @@ fn draw_frame(
       render_params.viewport = Some(viewport);
 
       let mut i = 0;
-      let quality_level = quality.get_target_lod();
+      let target_lod = quality.get_target_lod();
       for object in world.iter_mut() {
-        if quality_level > (i as f32 / num_objects as f32) {
-          i = object.draw(quality_level, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights);
+        if target_lod > (i as f32 / num_objects as f32) {
+          i = object.draw(target_lod, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights);
         }
       }
 
@@ -311,173 +295,11 @@ fn draw_frame(
     target.finish().unwrap();
   }
 
-  let predicted_remaining_time = frame_performance.process_draw_end();
-
-  // once every 100 frames, check for VR events
-  *event_counter += 1;
-  if *event_counter % 100 == 0 {
-    for event in vr.poll_events() {
-      match event {
-        VREvent::Display(VRDisplayEvent::Connect(data)) => {
-          println!("VR display {}: Connected (name: {})", data.display_id, data.display_name);
-        },
-        VREvent::Display(VRDisplayEvent::Disconnect(display_id)) => {
-          println!("VR display {}: Disconnected.", display_id);
-        },
-        VREvent::Display(VRDisplayEvent::Activate(data, _)) => {
-          println!("VR display {}: Activated.", data.display_id);
-        },
-        VREvent::Display(VRDisplayEvent::Deactivate(data, _)) => {
-          println!("VR display {}: Deactivated.", data.display_id);
-        },
-        _ => (),
-      }
-    }
-  }
-
   assert_no_gl_error!(*display);
 
-  let mut is_done = false;
-
-  events_loop.poll_events(|event| {
-    if let Some(event) = conrod::backend::winit::convert_event(event.clone(), display) {
-      gui.handle_event(event);
-    }
-
-    match event {
-      Event::WindowEvent { event, .. } => match event {
-        WindowEvent::Closed => is_done = true,
-        WindowEvent::Resized(width, height) => {
-          *render_dimensions = (width / 2, height);
-          println!("resized to {}x{}", width, height);
-        },
-        WindowEvent::KeyboardInput { input, .. } => {
-          let key_is_pressed = input.state == ElementState::Pressed;
-
-          match input {
-            KeyboardInput { virtual_keycode, .. } => match virtual_keycode {
-              Some(VirtualKeyCode::Q)         => if gui.is_visible { is_done = true },
-              Some(VirtualKeyCode::Escape)    => if key_is_pressed {
-                gui.is_visible = !gui.is_visible;
-
-                if gui.is_visible {
-                  window.set_cursor(MouseCursor::Default);
-                  window.set_cursor_state(CursorState::Normal)
-                      .ok()
-                      .expect("Could not ungrab mouse cursor");
-                } else {
-                  window.set_cursor(MouseCursor::NoneCursor);
-                  window.set_cursor_state(CursorState::Grab)
-                      .ok()
-                      .expect("Could not grab mouse cursor");
-                }
-              },
-              // Some(VirtualKeyCode::Up)        => if key_is_pressed { gui.select_previous() },
-              // Some(VirtualKeyCode::Down)      => if key_is_pressed { gui.select_next() },
-              // Some(VirtualKeyCode::Left)      => if key_is_pressed { gui.decrease_slider() },
-              // Some(VirtualKeyCode::Right)     => if key_is_pressed { gui.increase_slider() },
-              // Some(VirtualKeyCode::H)         => if key_is_pressed { conic.decrease_eccentricity() },
-              // Some(VirtualKeyCode::J)         => if key_is_pressed { conic.increase_eccentricity() },
-              // Some(VirtualKeyCode::K)         => if key_is_pressed { conic.decrease_slr() },
-              // Some(VirtualKeyCode::L)         => if key_is_pressed { conic.increase_slr() },
-              // Some(VirtualKeyCode::Return)    => if key_is_pressed {
-              //   let tmp_action = gui.activate();
-              //
-              //   match tmp_action {
-              //     Action::None => (),
-              //     _ => action = tmp_action,
-              //   }
-              // },
-
-              // activate while key is pressed
-              Some(VirtualKeyCode::W) => fps_camera.forward = key_is_pressed,
-              Some(VirtualKeyCode::S) => fps_camera.backward = key_is_pressed,
-              Some(VirtualKeyCode::A) => fps_camera.left = key_is_pressed,
-              Some(VirtualKeyCode::D) => fps_camera.right = key_is_pressed,
-              _ => {},
-            },
-          }
-        },
-        WindowEvent::CursorMoved { position, .. } => {
-          if !vr_mode && !gui.is_visible {
-            let (width, height) = window.get_inner_size().unwrap();
-            let origin_x = width as f64 / 4.0;
-            let origin_y = height as f64 / 4.0;
-            let rel_x = position.0 - origin_x;
-            let rel_y = position.1 - origin_y;
-
-            if frame_performance.get_frame_number() > 1 {
-              fps_camera.pitch = Rad((fps_camera.pitch - Rad(rel_y as f32 / 1000.0)).0
-                .max(-f32::consts::PI / 2.0)
-                .min(f32::consts::PI / 2.0));
-              fps_camera.yaw -= Rad(rel_x as f32 / 1000.0);
-            }
-
-            window.set_cursor_position(origin_x as i32, origin_y as i32).unwrap();
-          }
-        },
-        _ => (),
-      },
-      _ => (),
-    };
-  });
-
-  match action {
-    Action::Quit => return false,
-    Action::Resume => {
-      gui.is_visible = false;
-
-      if !vr_mode {
-        let (width, height) = window.get_inner_size().unwrap();
-        let origin_x = (width / 2) as i32;
-        let origin_y = (height / 2) as i32;
-        window.set_cursor_position(origin_x, origin_y).unwrap();
-        window.set_cursor(MouseCursor::NoneCursor);
-        window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
-      }
-    },
-    _ => (),
-  }
-
-  if !benchmarking {
-    quality.set_level(predicted_remaining_time, frame_performance.get_target_frame_time());
-    canvas.set_resolution_scale(quality.get_target_resolution());
-    canvas.set_msaa_scale(quality.get_target_msaa());
-  }
+  frame_performance.process_draw_end();
 
   frame_performance.process_frame_end();
-
-  // quit when demo is done
-  if let Some(d) = demo.as_mut() {
-    if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
-      is_done = true;
-    }
-  }
-
-  if is_done {
-    let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
-
-    if perf_filename != "" && !benchmarking {
-      let csv = frame_performance.to_csv();
-      let mut file = File::create(format!("{}-{}.csv", perf_filename, now)).unwrap();
-      file.write_all(csv.as_bytes()).unwrap();
-    }
-
-    if demo_record {
-      if let Some(d) = demo.as_mut() {
-        let filename = if demo_filename != "" {
-          demo_filename.to_string()
-        } else {
-          format!("performance/{}.demo", now)
-        };
-        d.to_bincode(&filename).unwrap();
-      }
-    }
-
-    return false;
-  }
-
-  true
 }
 
 fn main() {
@@ -562,36 +384,16 @@ fn main() {
     window.set_cursor_state(CursorState::Grab).ok().expect("Could not grab mouse cursor");
   }
 
-  let executable_string = env::args().nth(0).unwrap();
-  let executable_path = Path::new(&executable_string).parent().unwrap();
-  let project_path = executable_path.parent().unwrap().parent().unwrap();
-
-  println!("Executable path: {}", executable_path.to_str().unwrap());
-  println!("Executable path: {}", project_path.to_str().unwrap());
-
-  println!("Loading materials...");
-  let empty_path = project_path.join("data").join("empty.bmp");
-  let empty_path = resource_manager.get_texture(empty_path.to_str().unwrap()).unwrap();
-  let empty_material = Rc::new(RefCell::new(Material {
-    albedo_map: Rc::clone(&empty_path),
-    metalness: 0.0,
-    reflectivity: 0.0,
-  }));
-  let marble_path = project_path.join("data").join("marble.jpg");
-  let marble_texture = resource_manager.get_texture(marble_path.to_str().unwrap()).unwrap();
   let marble_material = Rc::new(RefCell::new(Material {
-    albedo_map: Rc::clone(&marble_texture),
+    albedo_map: resource_manager.get_texture("data/marble.jpg").unwrap(),
     metalness: 0.0,
     reflectivity: 0.0,
   }));
-  let terrain_path = project_path.join("data").join("terrain.png");
-  let terrain_texture = resource_manager.get_texture(terrain_path.to_str().unwrap()).unwrap();
   let terrain_material = Rc::new(RefCell::new(Material {
-    albedo_map: Rc::clone(&terrain_texture),
+    albedo_map: resource_manager.get_texture("data/terrain.png").unwrap(),
     metalness: 0.0,
     reflectivity: 0.0,
   }));
-  println!("Materials loaded!");
 
   let canvas_dimensions = if enable_supersampling {
     (render_dimensions.0 * 4, render_dimensions.1 * 2)
@@ -685,7 +487,11 @@ fn main() {
   let num_objects = calculate_num_objects(&world);
 
   // empty texture to force glutin clean
-  let mut empty = Object::new_plane(&display, &resource_manager, Rc::clone(&empty_material),
+  let mut empty = Object::new_plane(&display, &resource_manager, Rc::new(RefCell::new(Material {
+        albedo_map: resource_manager.get_texture("data/empty.bmp").unwrap(),
+        metalness: 0.0,
+        reflectivity: 0.0,
+      })),
       [0.0001,0.0001], [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
 
   // add a light
@@ -701,8 +507,6 @@ fn main() {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
     .. Default::default()
   };
-
-  let mut event_counter = 0u64;
 
   let mut fps_camera = FpsCamera::new(Vector3::new(0.0, 1.8, 3.0));
   fps_camera.pitch = Rad(-f32::consts::PI / 8.0);
@@ -732,54 +536,72 @@ fn main() {
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);
 
-  if benchmarking {
-    for feature in &["resolution", "msaa", "lod"] {
-      for quality_integer in 0u32 .. 50u32 {
-        quality.set_benchmark_mode(*feature, quality_integer as f32 * 0.02);
-        frame_performance.reset_frame_count();
+  let features = if benchmarking { vec!["resolution", "msaa", "lod"] } else { vec![""] };
+  let quality_integer_range = if benchmarking { 0u32 .. 50u32 } else { 0u32 .. 1u32 };
 
-        loop {
-          canvas.set_resolution_scale(quality.get_target_resolution());
-          canvas.set_msaa_scale(quality.get_target_msaa());
+  for feature in features {
+    for quality_integer in quality_integer_range.clone() {
+      frame_performance.reset_frame_count();
 
-          let action = input_handler.process(&gamepads);
-          // TODO: update_camera()
-          // TODO: maybe merge benchmark and non-benchmark loops again
+      if benchmarking {
+        quality.set_benchmark_mode(feature, quality_integer as f32 * 0.02);
+      }
 
-          update(&display, &mut world, &mut gui, &action);
+      'main: loop {
+        quality.set_level(&frame_performance);
+        canvas.set_resolution_scale(quality.get_target_resolution());
+        canvas.set_msaa_scale(quality.get_target_msaa());
 
-          if !draw_frame(benchmarking, feature, &quality, &perf_filename, &demo_filename, &mut vr,
-              vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
-              &lights, num_lights, &mut empty, &gamepads, &mut gamepad_models,&mut event_counter,
-              &mut events_loop, &mut canvas, &mut frame_performance, &mut render_dimensions,
-              &mut fps_camera, &mut gui, &mut demo, demo_record) {
-            break;
+        // prepare GUI and handle its actions
+        let gui_action = gui.prepare(*quality.level.borrow());
+
+        // get input and handle its actions
+        let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
+            vr_mode, &mut events_loop, &mut gui);
+
+        for action in &input_actions {
+          match action {
+            &Action::Quit => break 'main,
+            _ => (),
+          }
+        }
+
+        update_camera(&mut fps_camera, &input_actions);
+
+        update_world(&display, &mut world, &mut gui, &input_actions);
+
+        draw_frame(feature, &quality, vr_mode, vr_display, &display, &window, &mut render_params,
+            &mut world, num_objects, &lights, num_lights, &mut empty, &gamepads,
+            &mut gamepad_models, &mut canvas, &mut frame_performance, &mut render_dimensions,
+            &mut fps_camera, &mut gui, &mut demo, demo_record);
+
+        // quit when demo is done
+        if let Some(d) = demo.as_mut() {
+          if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
+            break 'main;
           }
         }
       }
     }
+  }
 
+  let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
+
+  if benchmarking || perf_filename != "" {
     // write benchmark csv
-    let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
     let csv = frame_performance.to_csv();
     let mut file = File::create(format!("{}-{}.csv", perf_filename, now)).unwrap();
     file.write_all(csv.as_bytes()).unwrap();
+  }
 
-  } else {
-    loop {
-      let action = input_handler.process(&gamepads);
-      // TODO: update_camera()
-      // TODO: maybe merge benchmark and non-benchmark loops again
-
-      update(&display, &mut world, &mut gui, &action);
-
-      if !draw_frame(benchmarking, "", &quality, &perf_filename, &demo_filename, &mut vr,
-          vr_mode, vr_display, &display, &window, &mut render_params, &mut world, num_objects,
-          &lights, num_lights, &mut empty, &gamepads, &mut gamepad_models, &mut event_counter,
-          &mut events_loop, &mut canvas, &mut frame_performance, &mut render_dimensions,
-          &mut fps_camera, &mut gui, &mut demo, demo_record) {
-        break;
-      }
+  if demo_record {
+    if let Some(d) = demo.as_mut() {
+      let filename = if demo_filename != "" {
+        demo_filename.to_string()
+      } else {
+        format!("performance/{}.demo", now)
+      };
+      d.to_bincode(&filename).unwrap();
     }
   }
 }

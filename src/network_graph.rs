@@ -225,7 +225,7 @@ impl Drawable for Network {
         &point_render_params).unwrap();
   }
 
-  fn update(&mut self, context: &Facade, _: Matrix4<f32>, _: &Action) {
+  fn update(&mut self, context: &Facade, _: Matrix4<f32>, _: &Vec<Action>) {
     if self.alpha < self.alpha_min {
       let num_nodes = self.nodes.len();
       self.alpha = 0.1;
