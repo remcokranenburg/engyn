@@ -20,6 +20,8 @@ use std::cmp;
 use std::fmt::Write;
 use std::time::Instant;
 
+use quality::Quality;
+
 const TARGET_FRAME_TIMES: [u32; 5] = [
     11_111_111u32,  // target for 90fps
     16_666_667u32,  // target for 60fps
@@ -34,8 +36,9 @@ pub struct LogEntry {
   pub sync_frame_data_time: u32,
   pub draw_time: u32,
   pub post_draw_time: u32,
-  pub quality: f32,
-  pub feature: String,
+  pub target_resolution: f32,
+  pub target_msaa: f32,
+  pub target_lod: f32,
 }
 
 pub struct FramePerformance {
@@ -48,8 +51,9 @@ pub struct FramePerformance {
   time_frame_end: Instant,
   frame_count: i32,
   current_fps_target: usize,
-  quality: f32,
-  feature: String,
+  target_resolution: f32,
+  target_msaa: f32,
+  target_lod: f32,
 }
 
 impl FramePerformance {
@@ -65,9 +69,10 @@ impl FramePerformance {
       time_draw_end: now,
       time_frame_end: now,
       frame_count: 0,
-      current_fps_target: if vr_mode { 0 } else { 1 },
-      quality: 0.0,
-      feature: "resolution".to_string(),
+      current_fps_target: if vr_mode { 0 } else { 3 },
+      target_resolution: 0.0,
+      target_msaa: 0.0,
+      target_lod: 0.0,
     }
   }
 
@@ -75,7 +80,7 @@ impl FramePerformance {
     self.frame_count = 0;
   }
 
-  pub fn process_frame_start(&mut self, feature: &str, quality: f32) {
+  pub fn process_frame_start(&mut self,quality: &Quality) {
     let time_new_frame = Instant::now();
 
     // write log entry for previous frame
@@ -85,14 +90,16 @@ impl FramePerformance {
       sync_frame_data_time: self.time_sync_frame_data.duration_since(self.time_sync_poses).subsec_nanos(),
       draw_time: self.time_draw_end.duration_since(self.time_draw_start).subsec_nanos(),
       post_draw_time: self.time_frame_end.duration_since(self.time_draw_end).subsec_nanos(),
-      quality: self.quality,
-      feature: self.feature.clone(),
+      target_resolution: self.target_resolution,
+      target_msaa: self.target_msaa,
+      target_lod: self.target_lod,
     });
 
     self.frame_count += 1;
     self.time_frame_start = time_new_frame;
-    self.quality = quality;
-    self.feature = feature.to_string();
+    self.target_resolution = quality.get_target_resolution();
+    self.target_msaa = quality.get_target_msaa();
+    self.target_lod = quality.get_target_lod();
   }
 
   pub fn process_sync_poses(&mut self) {
@@ -134,8 +141,14 @@ impl FramePerformance {
 
     let diff = last_draw_time - second_to_last_draw_time;
 
+
     // predict next remaining time as: target - (last draw time + diff)
-    cmp::max(0, self.get_target_frame_time() as i32 - (last_draw_time + diff)) as u32
+    let predicted_remaining = cmp::max(0, self.get_target_frame_time() as i32 - (last_draw_time + diff)) as u32;
+
+    // println!("last: {}, second_to_last: {}, diff: {}, predicted_remaining: {}", last_draw_time,
+    //     second_to_last_draw_time, diff, predicted_remaining);
+
+    predicted_remaining
   }
 
   pub fn get_target_frame_time(&self) -> u32 {
@@ -143,10 +156,10 @@ impl FramePerformance {
   }
 
   pub fn to_csv(&self) -> String {
-    let mut log_csv = String::from("Frame,FPS,SyncPoses,SyncFrameData,Draw,PostDraw,Idle,Quality,Feature\n");
+    let mut log_csv = String::from("Frame,FPS,SyncPoses,SyncFrameData,Draw,PostDraw,Idle,Resolution,MSAA,LOD\n");
     for (i, frame) in self.log.iter().enumerate() {
       let fps = 1_000_000_000f64 / (frame.frame_time as f64);
-      write!(&mut log_csv, "{},{},{},{},{},{},{},{},{}\n",
+      write!(&mut log_csv, "{},{},{},{},{},{},{},{},{},{}\n",
           i,
           fps,
           frame.sync_poses_time,
@@ -154,8 +167,9 @@ impl FramePerformance {
           frame.draw_time,
           frame.post_draw_time,
           frame.frame_time - frame.sync_poses_time - frame.sync_frame_data_time - frame.draw_time - frame.post_draw_time,
-          frame.quality,
-          frame.feature).unwrap();
+          frame.target_resolution,
+          frame.target_msaa,
+          frame.target_lod).unwrap();
     }
     log_csv
   }

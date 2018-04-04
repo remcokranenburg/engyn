@@ -21,6 +21,7 @@ extern crate bincode;
 extern crate cgmath;
 extern crate chrono;
 #[macro_use] extern crate conrod;
+extern crate csv;
 #[macro_use] extern crate glium;
 extern crate image;
 extern crate rand;
@@ -29,6 +30,7 @@ extern crate rust_webvr as webvr;
 extern crate tobj;
 
 mod adaptive_canvas;
+mod benchmark;
 mod camera;
 mod conic;
 mod demo;
@@ -88,6 +90,7 @@ use webvr::VRGamepadPtr;
 use webvr::VRServiceManager;
 
 use adaptive_canvas::AdaptiveCanvas;
+use benchmark::Benchmark;
 use camera::FpsCamera;
 use conic::Conic;
 use demo::Demo;
@@ -116,17 +119,15 @@ fn update_camera(fps_camera: &mut FpsCamera, actions: &Vec<Action>) {
 
 fn update_world(display: &Display, world: &mut Vec<Object>, gui: &mut Gui, actions: &Vec<Action>) {
   for object in world {
-    match object.drawable {
-      Some(ref mut drawable) => drawable.update(display, object.transform, actions),
-      None => (),
-    };
+    if let Some(ref mut drawable) = object.drawable {
+      drawable.update(display, object.transform, actions);
+    }
 
     update_world(display, &mut object.children, gui, actions);
   }
 }
 
 fn draw_frame(
-    feature: &str,
     quality: &Quality,
     vr_mode: bool,
     vr_display: Option<&VRDisplayPtr>,
@@ -147,7 +148,7 @@ fn draw_frame(
     gui: &mut Gui,
     demo: &mut Option<Demo>,
     demo_record: bool) {
-  frame_performance.process_frame_start(feature, *quality.level.borrow());
+  frame_performance.process_frame_start(quality);
 
   let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
   let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
@@ -309,6 +310,7 @@ fn main() {
   let mut demo_record = false;
   let mut weights = Vec::<f32>::new();
   let mut enable_supersampling = true;
+  let mut visualize_perf = false;
 
   {
     let mut ap = ArgumentParser::new();
@@ -319,6 +321,8 @@ fn main() {
       .add_option(&["-o", "--open"], Store, "open .obj file");
     ap.refer(&mut perf_filename)
       .add_option(&["-p", "--perf"], Store, "performance measurements");
+    ap.refer(&mut visualize_perf)
+      .add_option(&["--visualize", "--vis"], StoreTrue, "visualize performance measurements");
     ap.refer(&mut demo_filename)
       .add_option(&["-d", "--demo-filename"], Store, "file to use for playing demos (or record)");
     ap.refer(&mut demo_record)
@@ -405,7 +409,9 @@ fn main() {
 
   let mut world = Vec::new();
 
-  if obj_filename != "" {
+  if visualize_perf && perf_filename != "" {
+    world.push(Benchmark::from_file(&display, &perf_filename).as_object());
+  } else if obj_filename != "" {
     world.push(Object::from_file(&display, &resource_manager, &obj_filename));
   } else {
     // a triangle
@@ -501,7 +507,7 @@ fn main() {
   lights[0] = Light { color: [1.0, 0.0, 0.0], position: [10.0, 10.0, 10.0] };
   lights[1] = Light { color: [0.0, 1.0, 0.0], position: [10.0, 10.0, -10.0] };
   lights[2] = Light { color: [0.0, 0.0, 1.0], position: [-10.0, 10.0, -10.0] };
-  lights[2] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
+  lights[3] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
 
   let mut render_params = DrawParameters {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
@@ -536,49 +542,53 @@ fn main() {
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);
 
-  let features = if benchmarking { vec!["resolution", "msaa", "lod"] } else { vec![""] };
-  let quality_integer_range = if benchmarking { 0u32 .. 50u32 } else { 0u32 .. 1u32 };
+  let num_iterations = 11u32;
+  let range = if benchmarking { 0u32 .. num_iterations } else { 0u32 .. 1u32 };
+  let target_steps = 1.0 / (num_iterations - 1) as f32;
 
-  for feature in features {
-    for quality_integer in quality_integer_range.clone() {
-      frame_performance.reset_frame_count();
+  for target_resolution in range.clone() {
+    for target_msaa in range.clone() {
+      for target_lod in range.clone() {
+        frame_performance.reset_frame_count();
 
-      if benchmarking {
-        quality.set_benchmark_mode(feature, quality_integer as f32 * 0.02);
-      }
-
-      'main: loop {
-        quality.set_level(&frame_performance);
-        canvas.set_resolution_scale(quality.get_target_resolution());
-        canvas.set_msaa_scale(quality.get_target_msaa());
-
-        // prepare GUI and handle its actions
-        let gui_action = gui.prepare(*quality.level.borrow());
-
-        // get input and handle its actions
-        let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
-            vr_mode, &mut events_loop, &mut gui);
-
-        for action in &input_actions {
-          match action {
-            &Action::Quit => break 'main,
-            _ => (),
-          }
+        if benchmarking {
+          quality.set_target_resolution(target_resolution as f32 * target_steps);
+          quality.set_target_msaa(target_msaa as f32 * target_steps);
+          quality.set_target_lod(target_lod as f32 * target_steps);
         }
 
-        update_camera(&mut fps_camera, &input_actions);
+        'main: loop {
+          quality.set_level(&frame_performance);
+          canvas.set_resolution_scale(quality.get_target_resolution());
+          canvas.set_msaa_scale(quality.get_target_msaa());
 
-        update_world(&display, &mut world, &mut gui, &input_actions);
+          // prepare GUI and handle its actions
+          let gui_action = gui.prepare(*quality.level.borrow());
 
-        draw_frame(feature, &quality, vr_mode, vr_display, &display, &window, &mut render_params,
-            &mut world, num_objects, &lights, num_lights, &mut empty, &gamepads,
-            &mut gamepad_models, &mut canvas, &mut frame_performance, &mut render_dimensions,
-            &mut fps_camera, &mut gui, &mut demo, demo_record);
+          // get input and handle its actions
+          let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
+              vr_mode, &mut events_loop, &mut gui);
 
-        // quit when demo is done
-        if let Some(d) = demo.as_mut() {
-          if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
-            break 'main;
+          for action in &input_actions {
+            if let &Action::Quit = action {
+              break 'main
+            }
+          }
+
+          update_camera(&mut fps_camera, &input_actions);
+
+          update_world(&display, &mut world, &mut gui, &input_actions);
+
+          draw_frame(&quality, vr_mode, vr_display, &display, &window, &mut render_params,
+              &mut world, num_objects, &lights, num_lights, &mut empty, &gamepads,
+              &mut gamepad_models, &mut canvas, &mut frame_performance, &mut render_dimensions,
+              &mut fps_camera, &mut gui, &mut demo, demo_record);
+
+          // quit when demo is done
+          if let Some(d) = demo.as_mut() {
+            if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
+              break 'main;
+            }
           }
         }
       }
@@ -587,7 +597,7 @@ fn main() {
 
   let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
 
-  if benchmarking || perf_filename != "" {
+  if !visualize_perf && (benchmarking || perf_filename != "") {
     // write benchmark csv
     let csv = frame_performance.to_csv();
     let mut file = File::create(format!("{}-{}.csv", perf_filename, now)).unwrap();

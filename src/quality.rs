@@ -19,13 +19,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::f32;
+use std::cmp::Ordering;
 
+use benchmark::Benchmark;
+use benchmark::BenchmarkEntry;
 use performance::FramePerformance;
 
-const BENCHMARK_BASE_LEVEL: f32 = 1.0;
-
 pub struct Quality {
-  pub benchmark_mode: String,
+  pub adaptive_resolution: bool,
+  pub adaptive_msaa: bool,
+  pub adaptive_lod: bool,
   pub level: Rc<RefCell<f32>>,
   pub weight_resolution: Rc<RefCell<f32>>,
   pub weight_msaa: Rc<RefCell<f32>>,
@@ -51,7 +54,9 @@ impl Quality {
     ) };
 
     Quality {
-      benchmark_mode: "".to_string(),
+      adaptive_resolution: true,
+      adaptive_msaa: true,
+      adaptive_lod: true,
       level: Rc::new(RefCell::new(1.0)),
       weight_resolution: Rc::new(RefCell::new(weight_resolution)),
       weight_msaa: Rc::new(RefCell::new(weight_msaa)),
@@ -61,15 +66,12 @@ impl Quality {
     }
   }
 
-  pub fn set_benchmark_mode(&mut self, mode: &str, level: f32) {
-    self.benchmark_mode = mode.to_string();
-    *self.level.borrow_mut() = level;
-  }
-
   pub fn set_level(&self, frame_performance: &FramePerformance) {
     let predicted_remaining_time = frame_performance.get_predicted_remaining_time();
     let target_frame_time = frame_performance.get_target_frame_time();
     let ratio_remaining = predicted_remaining_time as f32 / target_frame_time as f32;
+
+    // println!("target: {}, remaining: {}, ratio: {}", target_frame_time, predicted_remaining_time, ratio_remaining);
 
     let original_level = *self.level.borrow();
 
@@ -88,34 +90,43 @@ impl Quality {
     a * x + (1.0 - a) * y
   }
 
+  pub fn set_target_resolution(&mut self, value: f32) {
+    self.adaptive_resolution = false;
+    *self.weight_resolution.borrow_mut() = value;
+  }
+
   pub fn get_target_resolution(&self) -> f32 {
-    if self.benchmark_mode == "resolution" {
-      *self.level.borrow()
-    } else if self.benchmark_mode != "" {
-      BENCHMARK_BASE_LEVEL
-    } else {
+    if self.adaptive_resolution {
       let default_target = if self.enable_supersampling { 0.5 } else { 1.0 };
       Quality::mix(*self.level.borrow(), default_target, *self.weight_resolution.borrow())
+    } else {
+      *self.weight_resolution.borrow()
     }
+  }
+
+  pub fn set_target_msaa(&mut self, value: f32) {
+    self.adaptive_msaa = false;
+    *self.weight_msaa.borrow_mut() = value;
   }
 
   pub fn get_target_msaa(&self) -> f32 {
-    if self.benchmark_mode == "msaa" {
-      *self.level.borrow()
-    } else if self.benchmark_mode != "" {
-      BENCHMARK_BASE_LEVEL
-    } else {
+    if self.adaptive_msaa {
       Quality::mix(*self.level.borrow(), 0.0, *self.weight_msaa.borrow())
+    } else {
+      *self.weight_msaa.borrow()
     }
   }
 
+  pub fn set_target_lod(&mut self, value: f32) {
+    self.adaptive_lod = false;
+    *self.weight_lod.borrow_mut() = value;
+  }
+
   pub fn get_target_lod(&self) -> f32 {
-    if self.benchmark_mode == "lod" {
-      *self.level.borrow()
-    } else if self.benchmark_mode != "" {
-      BENCHMARK_BASE_LEVEL
-    } else {
+    if self.adaptive_lod {
       Quality::mix(*self.level.borrow(), 1.0, *self.weight_lod.borrow())
+    } else {
+      *self.weight_lod.borrow()
     }
   }
 }
