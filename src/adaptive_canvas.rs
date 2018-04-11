@@ -40,6 +40,7 @@ use geometry::Texcoord;
 pub struct AdaptiveCanvas {
   pub rectangle: Geometry,
   pub viewports: [Rect; 2],
+  pub viewport: Rect,
 
   color_buffer: Texture2d,
   color_buffers_msaa: Vec<Texture2dMultisample>,
@@ -55,8 +56,6 @@ pub struct AdaptiveCanvas {
 impl<'a> AdaptiveCanvas {
   pub fn new(display: &Facade, max_width: u32, max_height: u32, max_msaa_level: usize) -> AdaptiveCanvas {
     let max_half_width = max_width / 2;
-
-
     let mut color_buffers_msaa = Vec::new();
     let mut depth_buffers_msaa = Vec::new();
 
@@ -93,6 +92,7 @@ impl<'a> AdaptiveCanvas {
             width: max_half_width,
             height: max_height,
           }],
+      viewport: Rect { left: 0, bottom: 0, width: max_width, height: max_height },
       color_buffer: color_buffer,
       color_buffers_msaa: color_buffers_msaa,
       depth_buffer: depth_buffer,
@@ -148,6 +148,9 @@ impl<'a> AdaptiveCanvas {
     self.viewports[1].left = bounded_half_width as u32;
     self.viewports[1].width = bounded_half_width as u32;
     self.viewports[1].height = bounded_height as u32;
+
+    self.viewport.width = bounded_width as u32;
+    self.viewport.height = bounded_height as u32;
   }
 
   pub fn set_msaa_scale(&mut self, scale: f32) {
@@ -210,8 +213,8 @@ impl<'a> AdaptiveCanvas {
       let rect = Rect {
         left: 0,
         bottom: 0,
-        width: self.viewports[0].width * 2,
-        height: self.viewports[0].height,
+        width: self.viewport.width,
+        height: self.viewport.height,
       };
       let blit_target = BlitTarget {
         left: 0,

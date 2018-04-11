@@ -175,6 +175,9 @@ impl InputHandler {
                 Some(VirtualKeyCode::J)         => if key_is_pressed { actions.push(Action::ConicEccentricityIncrease) },
                 Some(VirtualKeyCode::K)         => if key_is_pressed { actions.push(Action::ConicSlrDecrease) },
                 Some(VirtualKeyCode::L)         => if key_is_pressed { actions.push(Action::ConicSlrIncrease) },
+                Some(VirtualKeyCode::F1)        => if key_is_pressed { if !vr_mode { actions.push(Action::StereoNone) } },
+                Some(VirtualKeyCode::F2)        => if key_is_pressed { actions.push(Action::StereoCross) },
+                Some(VirtualKeyCode::F3)        => if key_is_pressed { actions.push(Action::StereoAnaglyph) },
 
                 // the following are longer actions
                 Some(VirtualKeyCode::W) => actions.push(Action::CameraMoveForward(key_is_pressed)),

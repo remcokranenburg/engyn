@@ -95,6 +95,9 @@ pub enum Action {
   Quit,
   Resize(u32, u32),
   Resume,
+  StereoNone,
+  StereoCross,
+  StereoAnaglyph,
   None,
 }
 

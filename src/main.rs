@@ -127,9 +127,16 @@ fn update_world(display: &Display, world: &mut Vec<Object>, gui: &mut Gui, actio
   }
 }
 
+enum StereoMode {
+  StereoNone,
+  StereoCross,
+  StereoAnaglyph,
+}
+
 fn draw_frame(
     quality: &Quality,
     vr_mode: bool,
+    stereo_mode: &StereoMode,
     vr_display: Option<&VRDisplayPtr>,
     display: &Display,
     window: &Window,
@@ -151,7 +158,8 @@ fn draw_frame(
   frame_performance.process_frame_start(quality);
 
   let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
-  let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
+  let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio * 2.0, 0.01f32, 1000.0);
+  let stereo_projection = cgmath::perspective(Deg(45.0), aspect_ratio, 0.01f32, 1000.0);
 
   let (
       standing_transform,
@@ -195,7 +203,7 @@ fn draw_frame(
     let left_view = left_translation * view;
     let right_translation = Matrix4::from_translation(Vector3::new(0.05, 0.0, 0.0));
     let right_view = right_translation * view;
-    (standing_transform, mono_projection, mono_projection, left_view, right_view)
+    (standing_transform, stereo_projection, stereo_projection, left_view, right_view)
   };
 
   let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
@@ -218,19 +226,31 @@ fn draw_frame(
   }
 
   {
-    let eyes = [
-      (&canvas.viewports[0], &left_projection_matrix, &left_view_matrix),
-      (&canvas.viewports[1], &right_projection_matrix, &right_view_matrix),
-    ];
+    let eyes = match stereo_mode {
+      &StereoMode::StereoNone => vec![
+        (&canvas.viewport, &mono_projection, &left_view_matrix, (true, true, true, true)),
+      ],
+      &StereoMode::StereoCross => vec![
+        (&canvas.viewports[0], &left_projection_matrix, &left_view_matrix, (true, true, true, true)),
+        (&canvas.viewports[1], &right_projection_matrix, &right_view_matrix, (true, true, true, true)),
+      ],
+      &StereoMode::StereoAnaglyph => vec![
+        (&canvas.viewport, &mono_projection, &left_view_matrix, (true, false, false, true)),
+        (&canvas.viewport, &mono_projection, &right_view_matrix, (false, true, true, true)),
+      ],
+    };
 
     let mut framebuffer = canvas.get_framebuffer(display).unwrap();
-    framebuffer.clear_color_and_depth((0.4, 0.4, 0.4, 1.0), 1.0);
+    framebuffer.clear_color(0.4, 0.4, 0.4, 1.0);
 
     for eye in &eyes {
+      framebuffer.clear_depth(1.0);
+
       let projection = math::matrix_to_uniform(*eye.1);
       let view = math::matrix_to_uniform(eye.2 * standing_transform);
       let viewport = *eye.0;
 
+      render_params.color_mask = eye.3;
       render_params.viewport = Some(viewport);
 
       let mut i = 0;
@@ -277,8 +297,8 @@ fn draw_frame(
     let src_rect = Rect {
       left: 0,
       bottom: 0,
-      width: canvas.viewports[0].width * 2,
-      height: canvas.viewports[0].height,
+      width: canvas.viewport.width,
+      height: canvas.viewport.height,
     };
 
     let (width, height) = window.get_inner_size().unwrap();
@@ -546,6 +566,8 @@ fn main() {
   let range = if benchmarking { 0u32 .. num_iterations } else { 0u32 .. 1u32 };
   let target_steps = 1.0 / (num_iterations - 1) as f32;
 
+  let mut stereo_mode = StereoMode::StereoCross;
+
   for target_resolution in range.clone() {
     for target_msaa in range.clone() {
       for target_lod in range.clone() {
@@ -570,6 +592,14 @@ fn main() {
               vr_mode, &mut events_loop, &mut gui);
 
           for action in &input_actions {
+            match action {
+              &Action::Quit => break 'main,
+              &Action::StereoNone => stereo_mode = StereoMode::StereoNone,
+              &Action::StereoCross => stereo_mode = StereoMode::StereoCross,
+              &Action::StereoAnaglyph => stereo_mode = StereoMode::StereoAnaglyph,
+              _ => (),
+            }
+
             if let &Action::Quit = action {
               break 'main
             }
@@ -579,10 +609,10 @@ fn main() {
 
           update_world(&display, &mut world, &mut gui, &input_actions);
 
-          draw_frame(&quality, vr_mode, vr_display, &display, &window, &mut render_params,
-              &mut world, num_objects, &lights, num_lights, &mut empty, &gamepads,
-              &mut gamepad_models, &mut canvas, &mut frame_performance, &mut render_dimensions,
-              &mut fps_camera, &mut gui, &mut demo, demo_record);
+          draw_frame(&quality, vr_mode, &stereo_mode, vr_display, &display, &window,
+              &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
+              &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
+              &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record);
 
           // quit when demo is done
           if let Some(d) = demo.as_mut() {
