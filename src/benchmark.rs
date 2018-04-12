@@ -80,9 +80,6 @@ impl Benchmark {
 
     let scale_factor = 1.0 / 64_000_000f32;
 
-    let file = File::open(filename).unwrap();
-    reader = Reader::from_reader(file);
-
     for result in reader.records() {
         match result {
           Ok(record) => {
