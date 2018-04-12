@@ -240,10 +240,12 @@ fn draw_frame(
       ],
     };
 
+    let is_anaglyph = if let &StereoMode::StereoAnaglyph = stereo_mode { true } else { false };
+
     let mut framebuffer = canvas.get_framebuffer(display).unwrap();
     framebuffer.clear_color(0.4, 0.4, 0.4, 1.0);
 
-    for eye in &eyes {
+    for (eye_i, eye) in eyes.iter().enumerate() {
       framebuffer.clear_depth(1.0);
 
       let projection = math::matrix_to_uniform(*eye.1);
