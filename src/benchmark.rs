@@ -27,6 +27,7 @@ use glium::index::PrimitiveType;
 use glium::PolygonMode;
 use glium::Program;
 use glium::Surface;
+use glium::vertex::BufferCreationError;
 use glium::VertexBuffer;
 use std::fs::File;
 
@@ -59,6 +60,9 @@ pub struct BenchmarkEntry {
 pub struct Benchmark {
   pub entries: Vec<BenchmarkEntry>,
   pub num_samples_per_weight: u32,
+
+  grid: VertexBuffer<Vertex>,
+  grid_program: Program,
 
   points: VertexBuffer<Vertex>,
   colors: VertexBuffer<Color>,
@@ -107,6 +111,8 @@ impl Benchmark {
     Benchmark {
       entries: Vec::new(),
       num_samples_per_weight: 0,
+      grid: Benchmark::construct_grid(context).unwrap(),
+      grid_program: construct_grid_program(context),
       points: VertexBuffer::new(context, &vertices).unwrap(),
       colors: VertexBuffer::new(context, &colors).unwrap(),
       program: construct_program(context),
@@ -136,6 +142,25 @@ impl Benchmark {
 
     result
   }
+
+  fn construct_grid<F>(context: &F) -> Result<VertexBuffer<Vertex>, BufferCreationError> where F: Facade {
+    let mut grid_vec = Vec::new();
+
+    for x in 0 .. 11 {
+      grid_vec.push(Vertex { position: (-1.0 + x as f32 * 0.2, 0.0, -1.0) });
+      grid_vec.push(Vertex { position: (-1.0 + x as f32 * 0.2, 0.0, 1.0) });
+    }
+
+    for z in 0 .. 11 {
+      grid_vec.push(Vertex { position: (-1.0, 0.0, -1.0 + z as f32 * 0.2) });
+      grid_vec.push(Vertex { position: (1.0, 0.0, -1.0 + z as f32 * 0.2) });
+    }
+
+    grid_vec.push(Vertex { position: (0.0, -1.0, 0.0) });
+    grid_vec.push(Vertex { position: (0.0, 1.0, 0.0) });
+
+    VertexBuffer::new(context, &grid_vec)
+  }
 }
 
 impl Drawable for Benchmark {
@@ -147,6 +172,16 @@ impl Drawable for Benchmark {
       view: view,
       model: math::matrix_to_uniform(model_transform),
     };
+
+    let mut grid_render_params = render_params.clone();
+    grid_render_params.polygon_mode = PolygonMode::Line;
+
+    target.draw(
+        &self.grid,
+        NoIndices(PrimitiveType::LinesList),
+        &self.grid_program,
+        &uniforms,
+        &grid_render_params).unwrap();
 
     let mut point_render_params = render_params.clone();
     point_render_params.point_size = Some(20.0);
@@ -161,6 +196,41 @@ impl Drawable for Benchmark {
   }
 
   fn update(&mut self, _: &Facade, _: Matrix4<f32>, _: &Vec<Action>) {}
+}
+
+fn construct_grid_program<F>(context: &F) -> Program
+    where F: Facade {
+  Program::from_source(
+    context,
+    &r#"
+      #version 140
+
+      uniform mat4 projection;
+      uniform mat4 view;
+      uniform mat4 model;
+
+      in vec3 position;
+
+      void main() {
+        vec4 position_global = model * vec4(position, 1.0);
+        vec4 position_eye = view * position_global;
+
+        gl_Position = projection * position_eye;
+      }
+    "#,
+    &r#"
+      #version 330
+
+      const float SCREEN_GAMMA = 2.2;
+      const float INTENSITY = 20.0;
+
+      out vec4 color;
+
+      void main() {
+        color = vec4(0.0, 0.0, 0.0, 1.0);
+      }
+    "#,
+    None).unwrap()
 }
 
 fn construct_program<F>(context: &F) -> Program
