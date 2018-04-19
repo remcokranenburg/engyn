@@ -178,6 +178,9 @@ impl InputHandler {
                 Some(VirtualKeyCode::F1)        => if key_is_pressed { if !vr_mode { actions.push(Action::StereoNone) } },
                 Some(VirtualKeyCode::F2)        => if key_is_pressed { actions.push(Action::StereoCross) },
                 Some(VirtualKeyCode::F3)        => if key_is_pressed { actions.push(Action::StereoAnaglyph) },
+                Some(VirtualKeyCode::Key1)      => if key_is_pressed { actions.push(Action::VisualizeOneD) },
+                Some(VirtualKeyCode::Key2)      => if key_is_pressed { actions.push(Action::VisualizeTwoD) },
+                Some(VirtualKeyCode::Key3)      => if key_is_pressed { actions.push(Action::VisualizeThreeD) },
 
                 // the following are longer actions
                 Some(VirtualKeyCode::W) => actions.push(Action::CameraMoveForward(key_is_pressed)),

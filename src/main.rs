@@ -199,9 +199,9 @@ fn draw_frame(
 
     frame_performance.process_sync_frame_data();
 
-    let left_translation = Matrix4::from_translation(Vector3::new(-0.02, 0.0, 0.0));
+    let left_translation = Matrix4::from_translation(Vector3::new(-0.005, 0.0, 0.0));
     let left_view = left_translation * view;
-    let right_translation = Matrix4::from_translation(Vector3::new(0.02, 0.0, 0.0));
+    let right_translation = Matrix4::from_translation(Vector3::new(0.005, 0.0, 0.0));
     let right_view = right_translation * view;
     (standing_transform, stereo_projection, stereo_projection, left_view, right_view)
   };

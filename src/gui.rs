@@ -98,6 +98,9 @@ pub enum Action {
   StereoNone,
   StereoCross,
   StereoAnaglyph,
+  VisualizeOneD,
+  VisualizeTwoD,
+  VisualizeThreeD,
   None,
 }
 
