@@ -24,6 +24,7 @@ extern crate chrono;
 extern crate csv;
 #[macro_use] extern crate glium;
 extern crate image;
+extern crate itertools;
 extern crate rand;
 extern crate rust_webvr as webvr;
 #[macro_use] extern crate serde_derive;
@@ -80,6 +81,7 @@ use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
 use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
+use itertools::Itertools;
 use std::cell::RefCell;
 use std::f32;
 use std::fs::File;
@@ -330,6 +332,7 @@ fn main() {
   let mut perf_filename = "".to_string();
   let mut demo_filename = "".to_string();
   let mut demo_record = false;
+  let mut demo_length = -1i32;
   let mut weights = Vec::<f32>::new();
   let mut enable_supersampling = true;
   let mut visualize_perf = false;
@@ -347,6 +350,8 @@ fn main() {
       .add_option(&["--visualize", "--vis"], StoreTrue, "visualize performance measurements");
     ap.refer(&mut demo_filename)
       .add_option(&["-d", "--demo-filename"], Store, "file to use for playing demos (or record)");
+    ap.refer(&mut demo_length)
+      .add_option(&["-t", "--trim"], Store, "trim the demo to length (in frames)");
     ap.refer(&mut demo_record)
       .add_option(&["-r", "--record"], StoreTrue, "set this to record demo instead of playback");
     ap.refer(&mut weights)
@@ -564,7 +569,7 @@ fn main() {
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);
 
-  let num_iterations = 11u32;
+  let num_iterations = 21u32;
   let range = if benchmarking { 0u32 .. num_iterations } else { 0u32 .. 1u32 };
   let target_steps = 1.0 / (num_iterations - 1) as f32;
 
@@ -636,14 +641,26 @@ fn main() {
     file.write_all(csv.as_bytes()).unwrap();
   }
 
-  if demo_record {
+  if demo_record || demo_length > 0 {
     if let Some(d) = demo.as_mut() {
       let filename = if demo_filename != "" {
         demo_filename.to_string()
       } else {
         format!("performance/{}.demo", now)
       };
-      d.to_bincode(&filename).unwrap();
+
+      if demo_length <= 0 {
+        d.to_bincode(&filename).unwrap();
+      } else {
+        let mut new_demo = Demo::new();
+        let step_size = d.entries.len() / demo_length as usize;
+
+        for entry in d.entries.iter().step(step_size) {
+          new_demo.entries.push(entry.clone());
+        }
+
+        new_demo.to_bincode(&filename).unwrap();
+      }
     }
   }
 }

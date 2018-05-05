@@ -23,7 +23,7 @@ use std::io::Result;
 use std::io::Read;
 use std::io::Write;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DemoEntry {
   pub head_left: [[f32; 4]; 4],
   pub head_right: [[f32; 4]; 4],

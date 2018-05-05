@@ -12,6 +12,7 @@ conrod = { version = "*", features = ["glium", "winit"] }
 csv = "1.0.0-beta.5"
 glium = { version = "*", features = ["glutin"] }
 image = "*"
+itertools = "*"
 rand = "*"
 rust-webvr = "*"
 serde = "*"
