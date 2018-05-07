@@ -49,7 +49,7 @@ impl Quality {
       weights[2],
     ) } else { (
       1.0,
-      1.0,
+      0.0,
       1.0,
     ) };
 

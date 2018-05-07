@@ -88,6 +88,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::rc::Rc;
 use webvr::VRDisplayPtr;
+use webvr::VRFramebufferAttributes;
 use webvr::VRGamepadPtr;
 use webvr::VRServiceManager;
 
@@ -261,11 +262,9 @@ fn draw_frame(
       let target_lod = quality.get_target_lod();
       for object in world.iter_mut() {
         if target_lod > (i as f32 / num_objects as f32) {
-          i = object.draw(target_lod, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights);
+          i = object.draw(target_lod, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
         }
       }
-
-      empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
 
       for (i, ref gamepad) in gamepads.iter().enumerate() {
         let state = gamepad.borrow().state();
@@ -279,14 +278,14 @@ fn draw_frame(
         };
 
         gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-        gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights);
+        gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
       }
+
+      empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
 
       canvas.resolve(display);
 
-      for eye in &eyes {
-        gui.draw(&mut canvas.get_resolved_framebuffer(display).unwrap(), *eye.0);
-      }
+      gui.draw(&mut canvas.get_resolved_framebuffer(display).unwrap(), *eye.0);
     }
 
     if vr_mode {
@@ -531,9 +530,9 @@ fn main() {
 
   let num_lights = 4;
   let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
-  lights[0] = Light { color: [1.0, 0.0, 0.0], position: [10.0, 10.0, 10.0] };
-  lights[1] = Light { color: [0.0, 1.0, 0.0], position: [10.0, 10.0, -10.0] };
-  lights[2] = Light { color: [0.0, 0.0, 1.0], position: [-10.0, 10.0, -10.0] };
+  lights[0] = Light { color: [1.0, 0.9, 0.9], position: [10.0, 10.0, 10.0] };
+  lights[1] = Light { color: [0.9, 1.0, 0.9], position: [10.0, 10.0, -10.0] };
+  lights[2] = Light { color: [0.9, 0.9, 1.0], position: [-10.0, 10.0, -10.0] };
   lights[3] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
 
   let mut render_params = DrawParameters {
@@ -574,6 +573,14 @@ fn main() {
   let target_steps = 1.0 / (num_iterations - 1) as f32;
 
   let mut stereo_mode = StereoMode::StereoCross;
+
+  if let Some(d) = vr_display {
+    d.borrow_mut().start_present(Some(VRFramebufferAttributes {
+      depth: false,
+      multisampling: false,
+      multiview: false,
+    }));
+  }
 
   for target_resolution in range.clone() {
     for target_msaa in range.clone() {

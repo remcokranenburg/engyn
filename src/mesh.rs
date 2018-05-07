@@ -62,7 +62,8 @@ impl Mesh {
 impl Drawable for Mesh {
   fn draw(&mut self, target: &mut SimpleFrameBuffer,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], model_transform: Matrix4<f32>,
-      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) {
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32], eye_i: usize,
+      is_anaglyph: bool) {
     let albedo_map = &self.material.borrow().albedo_map;
 
     let uniforms = ObjectUniforms {
@@ -74,6 +75,8 @@ impl Drawable for Mesh {
       reflectivity: self.material.borrow().reflectivity,
       num_lights: num_lights,
       lights: *lights,
+      eye_i: eye_i,
+      is_anaglyph: is_anaglyph,
     };
 
     match self.geometry.indices {
@@ -140,6 +143,8 @@ fn construct_program<F>(display: &F) -> Program
         uniform sampler2D albedo_map;
         uniform int num_lights;
         uniform Light lights[MAX_NUM_LIGHTS];
+        uniform uint eye_i;
+        uniform bool is_anaglyph;
 
         in vec3 v_normal;
         in vec2 v_texcoord;
@@ -163,6 +168,19 @@ fn construct_program<F>(display: &F) -> Program
           return lambertian * combined_color;
         }
 
+        vec3 make_anaglyph(vec3 color, uint eye_i, bool is_anaglyph) {
+          if(is_anaglyph) {
+            if(eye_i == 0u) {
+              vec3 coefficients = vec3(0.7, 0.15, 0.15);
+              return vec3(dot(color, coefficients), 0.0, 0.0);
+            } else {
+              return vec3(0.0, color.g, color.b);
+            }
+          } else {
+            return color;
+          }
+        }
+
         void main() {
           vec3 normal = normalize(v_normal);
           vec3 material_color = vec3(texture(albedo_map, v_texcoord));
@@ -175,7 +193,7 @@ fn construct_program<F>(display: &F) -> Program
           }
 
           vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
-          color = vec4(color_gamma_corrected, 1.0);
+          color = vec4(make_anaglyph(color_gamma_corrected, eye_i, is_anaglyph), 1.0);
         }
       "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
       None).unwrap()

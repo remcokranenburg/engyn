@@ -47,7 +47,7 @@ use resources::ResourceManager;
 pub trait Drawable {
   fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
       model_transform: Matrix4<f32>, render_params: &DrawParameters, num_lights: i32,
-      lights: &[Light; 32]);
+      lights: &[Light; 32], eye_i: usize, is_anaglyph: bool);
 
   fn update(&mut self, context: &Facade, model_transform: Matrix4<f32>, actions: &Vec<Action>);
 }
@@ -214,21 +214,22 @@ impl Object {
 
   pub fn draw(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], render_params: &DrawParameters,
-      num_lights: i32, lights: &[Light; 32]) -> u32 {
+      num_lights: i32, lights: &[Light; 32], eye_i: usize, is_anaglyph: bool) -> u32 {
     let root = Matrix4::<f32>::identity();
     self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, render_params,
-        num_lights, lights)
+        num_lights, lights, eye_i, is_anaglyph)
   }
 
 
   fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
-      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32]) -> u32 {
+      render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32], eye_i: usize,
+      is_anaglyph: bool) -> u32 {
     let model_transform = group * self.transform;
 
     match self.drawable {
       Some(ref mut d) => d.draw(target, projection, view, model_transform, render_params,
-          num_lights, lights),
+          num_lights, lights, eye_i, is_anaglyph),
       None => (),
     }
 
@@ -236,7 +237,7 @@ impl Object {
     for object in &mut self.children {
       if quality_level > (result as f32 / num_objects as f32) {
         result = object.draw_recurse(quality_level, result, num_objects, target, projection, view,
-            model_transform, render_params, num_lights, lights);
+            model_transform, render_params, num_lights, lights, eye_i, is_anaglyph);
       }
     }
     result

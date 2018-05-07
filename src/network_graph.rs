@@ -206,7 +206,8 @@ impl Network {
 
 impl Drawable for Network {
   fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32, _: &[Light; 32]) {
+      model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32, _: &[Light; 32],
+      eye_i: usize, is_anaglyph: bool) {
     let uniforms = uniform! {
       projection: projection,
       view: view,

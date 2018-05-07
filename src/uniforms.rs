@@ -33,6 +33,8 @@ pub struct ObjectUniforms<'a> {
   pub reflectivity: f32,
   pub num_lights: i32,
   pub lights: [Light; MAX_NUM_LIGHTS],
+  pub eye_i: usize,
+  pub is_anaglyph: bool,
 }
 
 impl<'a> Uniforms for ObjectUniforms<'a> {
@@ -49,5 +51,8 @@ impl<'a> Uniforms for ObjectUniforms<'a> {
       f(&format!("lights[{}].color", i)[..], UniformValue::Vec3(self.lights[i].color));
       f(&format!("lights[{}].position", i)[..], UniformValue::Vec3(self.lights[i].position));
     }
+
+    f("eye_i", UniformValue::UnsignedInt(self.eye_i as u32));
+    f("is_anaglyph", UniformValue::Bool(self.is_anaglyph));
   }
 }
