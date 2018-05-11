@@ -8,3 +8,6 @@ performance/*.ods
 
 # LibreOffice lock files
 .~lock.*
+
+# Python cache
+__pycache__
