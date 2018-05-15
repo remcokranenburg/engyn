@@ -319,7 +319,7 @@ fn draw_frame(
     target.finish().unwrap();
   }
 
-  assert_no_gl_error!(*display);
+  //assert_no_gl_error!(*display);
 
   frame_performance.process_draw_end();
 
