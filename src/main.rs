@@ -259,7 +259,7 @@ fn draw_frame(
       render_params.viewport = Some(viewport);
 
       let mut i = 0;
-      let target_lod = quality.get_target_lod();
+      let target_lod = quality.get_target_levels().2;
       for object in world.iter_mut() {
         if target_lod > (i as f32 / num_objects as f32) {
           i = object.draw(target_lod, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
@@ -588,15 +588,18 @@ fn main() {
         frame_performance.reset_frame_count();
 
         if benchmarking {
-          quality.set_target_resolution(target_resolution as f32 * target_steps);
-          quality.set_target_msaa(target_msaa as f32 * target_steps);
-          quality.set_target_lod(target_lod as f32 * target_steps);
+          quality.set_target_levels((
+            target_resolution as f32 * target_steps,
+            target_msaa as f32 * target_steps,
+            target_lod as f32 * target_steps,
+          ));
         }
 
         'main: loop {
           quality.set_level(&frame_performance);
-          canvas.set_resolution_scale(quality.get_target_resolution());
-          canvas.set_msaa_scale(quality.get_target_msaa());
+          let targets = quality.get_target_levels();
+          canvas.set_resolution_scale(targets.0);
+          canvas.set_msaa_scale(targets.1);
 
           // prepare GUI and handle its actions
           let gui_action = gui.prepare(*quality.level.borrow());

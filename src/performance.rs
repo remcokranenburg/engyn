@@ -97,9 +97,10 @@ impl FramePerformance {
 
     self.frame_count += 1;
     self.time_frame_start = time_new_frame;
-    self.target_resolution = quality.get_target_resolution();
-    self.target_msaa = quality.get_target_msaa();
-    self.target_lod = quality.get_target_lod();
+    let targets = quality.get_target_levels();
+    self.target_resolution = targets.0;
+    self.target_msaa = targets.1;
+    self.target_lod = targets.2;
   }
 
   pub fn process_sync_poses(&mut self) {
