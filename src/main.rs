@@ -563,7 +563,7 @@ fn main() {
   }
 
   let mut input_handler = InputHandler::new(gamepads.len());
-  let mut quality = Quality::new(weights, enable_supersampling);
+  let mut quality = Quality::new(weights);
   let mut gui = Gui::new(&display, Rc::clone(&quality.weight_resolution),
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);
