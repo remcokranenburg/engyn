@@ -431,7 +431,7 @@ fn main() {
     (render_dimensions.0 * 2, render_dimensions.1)
   };
 
-  let mut canvas = AdaptiveCanvas::new(&display, canvas_dimensions.0, canvas_dimensions.1, 4);
+  let mut canvas = AdaptiveCanvas::new(&display, canvas_dimensions.0, canvas_dimensions.1, 3);
 
   let mut world = Vec::new();
 
