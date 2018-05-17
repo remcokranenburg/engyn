@@ -34,23 +34,15 @@ use std::path::Path;
 use std::rc::Rc;
 use tobj;
 
+use drawable::Drawable;
 use geometry::Geometry;
 use geometry::Normal;
 use geometry::Vertex;
 use geometry::Texcoord;
-use gui::Action;
 use light::Light;
 use material::Material;
 use mesh::Mesh;
 use resources::ResourceManager;
-
-pub trait Drawable {
-  fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      model_transform: Matrix4<f32>, render_params: &DrawParameters, num_lights: i32,
-      lights: &[Light; 32], eye_i: usize, is_anaglyph: bool);
-
-  fn update(&mut self, context: &Facade, model_transform: Matrix4<f32>, actions: &Vec<Action>);
-}
 
 pub struct Object {
   pub children: Vec<Object>,
@@ -81,10 +73,16 @@ impl Object {
       })));
     }
 
-    let mut min_pos = [f32::INFINITY; 3];
-    let mut max_pos = [f32::NEG_INFINITY; 3];
+    let mut global_bounding_box = (
+      [f32::INFINITY; 3],
+      [f32::NEG_INFINITY; 3],
+    );
 
     for obj in objs {
+      let mut bounding_box = (
+        [f32::INFINITY; 3],
+        [f32::NEG_INFINITY; 3],
+      );
 
       for idx in &obj.mesh.indices {
         let i = *idx as usize;
@@ -95,9 +93,14 @@ impl Object {
         ];
 
         for i in 0..pos.len() {
-          min_pos[i] = f32::min(min_pos[i], pos[i]);
-          max_pos[i] = f32::max(max_pos[i], pos[i]);
+          bounding_box.0[i] = bounding_box.0[i].min(pos[i]);
+          bounding_box.1[i] = bounding_box.1[i].max(pos[i]);
         }
+      }
+
+      for i in 0..bounding_box.0.len() {
+        global_bounding_box.0[i] = global_bounding_box.0[i].min(bounding_box.0[i]);
+        global_bounding_box.1[i] = global_bounding_box.1[i].max(bounding_box.1[i]);
       }
 
       let indices = if obj.mesh.indices.len() > 0 {
@@ -146,6 +149,7 @@ impl Object {
         drawable: Some(Box::new(Mesh::new(
             context,
             Geometry {
+              bounding_box,
               indices: indices,
               normals: normals,
               vertices: vertices,
@@ -157,7 +161,7 @@ impl Object {
       });
     }
 
-    let lengths = max_pos.iter().zip(min_pos.iter()).map(|x| x.0 - x.1);
+    let lengths = global_bounding_box.1.iter().zip(global_bounding_box.0.iter()).map(|x| x.0 - x.1);
     let target_length = 450.0; // 2²+2²+2²
     let current_length = lengths.fold(0.0, |result, x| result + f32::powf(x, 2.0));
 
@@ -212,32 +216,33 @@ impl Object {
   }
 
 
-  pub fn draw(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer,
-      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], render_params: &DrawParameters,
-      num_lights: i32, lights: &[Light; 32], eye_i: usize, is_anaglyph: bool) -> u32 {
+  pub fn draw(&mut self, quality_level: f32, i: u32, num_objects: u32,
+      target: &mut SimpleFrameBuffer, context: &Facade, projection: [[f32; 4]; 4],
+      view: [[f32; 4]; 4], render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32],
+      eye_i: usize, is_anaglyph: bool, show_bbox: bool) -> u32 {
     let root = Matrix4::<f32>::identity();
-    self.draw_recurse(quality_level, i, num_objects, target, projection, view, root, render_params,
-        num_lights, lights, eye_i, is_anaglyph)
+    self.draw_recurse(quality_level, i, num_objects, target, context, projection, view, root, render_params,
+        num_lights, lights, eye_i, is_anaglyph, show_bbox)
   }
 
 
-  fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer,
+  fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer, context: &Facade,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
       render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32], eye_i: usize,
-      is_anaglyph: bool) -> u32 {
+      is_anaglyph: bool, show_bbox: bool) -> u32 {
     let model_transform = group * self.transform;
 
     match self.drawable {
-      Some(ref mut d) => d.draw(target, projection, view, model_transform, render_params,
-          num_lights, lights, eye_i, is_anaglyph),
+      Some(ref mut d) => d.draw(target, context, projection, view, model_transform, render_params,
+          num_lights, lights, eye_i, is_anaglyph, show_bbox),
       None => (),
     }
 
     let mut result = i + 1;
     for object in &mut self.children {
       if quality_level > (result as f32 / num_objects as f32) {
-        result = object.draw_recurse(quality_level, result, num_objects, target, projection, view,
-            model_transform, render_params, num_lights, lights, eye_i, is_anaglyph);
+        result = object.draw_recurse(quality_level, result, num_objects, target, context, projection, view,
+            model_transform, render_params, num_lights, lights, eye_i, is_anaglyph, show_bbox);
       }
     }
     result

@@ -35,6 +35,7 @@ mod benchmark;
 mod camera;
 mod conic;
 mod demo;
+mod drawable;
 mod geometry;
 mod gui;
 mod input;
@@ -157,7 +158,8 @@ fn draw_frame(
     fps_camera: &mut FpsCamera,
     gui: &mut Gui,
     demo: &mut Option<Demo>,
-    demo_record: bool) {
+    demo_record: bool,
+    show_bbox: bool) {
   frame_performance.process_frame_start(quality);
 
   let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
@@ -262,7 +264,7 @@ fn draw_frame(
       let target_lod = quality.get_target_levels().2;
       for object in world.iter_mut() {
         if target_lod > (i as f32 / num_objects as f32) {
-          i = object.draw(target_lod, i, num_objects, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
+          i = object.draw(target_lod, i, num_objects, &mut framebuffer, display, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph, show_bbox);
         }
       }
 
@@ -278,10 +280,10 @@ fn draw_frame(
         };
 
         gamepad_models[i].transform = inverse_standing_transform * position * rotation;
-        gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
+        gamepad_models[i].draw(1.0, 0, 1, &mut framebuffer, display, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph, show_bbox);
       }
 
-      empty.draw(1.0, 0, 1, &mut framebuffer, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph);
+      empty.draw(1.0, 0, 1, &mut framebuffer, display, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph, show_bbox);
 
       canvas.resolve(display);
 
@@ -467,11 +469,30 @@ fn main() {
       texcoords
     };
 
+    let my_teapot_bounding_box = {
+      let mut bounding_box = (
+        [f32::INFINITY; 3],
+        [f32::NEG_INFINITY; 3],
+      );
+
+      for vertex in teapot::VERTICES.iter() {
+        bounding_box.0[0] = bounding_box.0[0].min(vertex.position.0);
+        bounding_box.0[1] = bounding_box.0[1].min(vertex.position.1);
+        bounding_box.0[2] = bounding_box.0[2].min(vertex.position.2);
+        bounding_box.1[0] = bounding_box.1[0].max(vertex.position.0);
+        bounding_box.1[1] = bounding_box.1[1].max(vertex.position.1);
+        bounding_box.1[2] = bounding_box.1[2].max(vertex.position.2);
+      }
+
+      bounding_box
+    };
+
     let my_teapot = Object {
       children: Vec::new(),
       drawable: Some(Box::new(Mesh::new(
           &display,
           Geometry {
+            bounding_box: my_teapot_bounding_box,
             indices: Some(IndexBuffer::new(
                 &display,
                 PrimitiveType::TrianglesList,
@@ -573,6 +594,7 @@ fn main() {
   let target_steps = 1.0 / (num_iterations - 1) as f32;
 
   let mut stereo_mode = StereoMode::StereoCross;
+  let mut show_bbox = false;
 
   if let Some(d) = vr_display {
     d.borrow_mut().start_present(Some(VRFramebufferAttributes {
@@ -614,6 +636,7 @@ fn main() {
               &Action::StereoNone => stereo_mode = StereoMode::StereoNone,
               &Action::StereoCross => stereo_mode = StereoMode::StereoCross,
               &Action::StereoAnaglyph => stereo_mode = StereoMode::StereoAnaglyph,
+              &Action::ToggleBoundingBox => show_bbox = !show_bbox,
               _ => (),
             }
 
@@ -629,7 +652,7 @@ fn main() {
           draw_frame(&quality, vr_mode, &stereo_mode, vr_display, &display, &window,
               &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
               &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
-              &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record);
+              &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record, show_bbox);
 
           // quit when demo is done
           if let Some(d) = demo.as_mut() {

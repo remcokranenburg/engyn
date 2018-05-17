@@ -18,21 +18,25 @@
 
 use cgmath::Matrix4;
 use glium::DrawParameters;
+use glium::PolygonMode;
 use glium::Program;
 use glium::backend::Facade;
 use glium::framebuffer::SimpleFrameBuffer;
+use glium::IndexBuffer;
 use glium::index::NoIndices;
 use glium::index::PrimitiveType;
 use glium::Surface;
+use glium::VertexBuffer;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use drawable::Drawable;
 use geometry::Geometry;
+use geometry::Vertex;
 use gui::Action;
 use light::Light;
 use material::Material;
 use math;
-use object::Drawable;
 use resources::ResourceManager;
 use uniforms;
 use uniforms::ObjectUniforms;
@@ -41,6 +45,7 @@ pub struct Mesh {
   pub geometry: Geometry,
   pub material: Rc<RefCell<Material>>,
   pub program: Rc<RefCell<Program>>,
+  pub bbox_program: Rc<RefCell<Program>>,
 }
 
 impl Mesh {
@@ -51,19 +56,24 @@ impl Mesh {
       construct_program(display)
     }).unwrap();
 
+    let bbox_program = resource_manager.get_program("programs/mesh_bbox_program", &|| {
+      construct_bbox_program(display)
+    }).unwrap();
+
     Mesh {
       geometry: geometry,
       material: material,
       program: Rc::clone(&program),
+      bbox_program: Rc::clone(&bbox_program),
     }
   }
 }
 
 impl Drawable for Mesh {
-  fn draw(&mut self, target: &mut SimpleFrameBuffer,
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, context: &Facade,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], model_transform: Matrix4<f32>,
       render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32], eye_i: usize,
-      is_anaglyph: bool) {
+      is_anaglyph: bool, show_bbox: bool) {
     let albedo_map = &self.material.borrow().albedo_map;
 
     let uniforms = ObjectUniforms {
@@ -93,9 +103,98 @@ impl Drawable for Mesh {
         &uniforms,
         render_params).unwrap(),
     }
+
+    if show_bbox {
+      let bbox = &self.geometry.bounding_box;
+      let bbox_vertices = VertexBuffer::new(context, &[
+        Vertex { position: (bbox.0[0], bbox.0[1], bbox.0[2]) },
+        Vertex { position: (bbox.1[0], bbox.0[1], bbox.0[2]) },
+        Vertex { position: (bbox.0[0], bbox.1[1], bbox.0[2]) },
+        Vertex { position: (bbox.1[0], bbox.1[1], bbox.0[2]) },
+        Vertex { position: (bbox.0[0], bbox.0[1], bbox.1[2]) },
+        Vertex { position: (bbox.1[0], bbox.0[1], bbox.1[2]) },
+        Vertex { position: (bbox.0[0], bbox.1[1], bbox.1[2]) },
+        Vertex { position: (bbox.1[0], bbox.1[1], bbox.1[2]) },
+      ]).unwrap();
+      let bbox_indices = IndexBuffer::new(
+          context,
+          PrimitiveType::TriangleStrip,
+          &[7u32, 6, 3, 2, 0, 6, 4, 7, 5, 3, 1, 0, 5, 4]).unwrap();
+
+      let bbox_uniforms = uniform! {
+        projection: projection,
+        view: view,
+        model: math::matrix_to_uniform(model_transform),
+        eye_i: eye_i as u32,
+        is_anaglyph: is_anaglyph,
+      };
+
+      let mut bbox_render_params = render_params.clone();
+      bbox_render_params.polygon_mode = PolygonMode::Line;
+
+      target.draw(
+        &bbox_vertices,
+        &bbox_indices,
+        &self.bbox_program.borrow(),
+        &bbox_uniforms,
+        &bbox_render_params).unwrap();
+    }
   }
 
   fn update(&mut self, _: &Facade, _: Matrix4<f32>, _: &Vec<Action>) {}
+}
+
+fn construct_bbox_program<F>(display: &F) -> Program
+    where F: Facade {
+      Program::from_source(
+          display,
+          &r#"
+            #version 140
+
+            uniform mat4 projection;
+            uniform mat4 view;
+            uniform mat4 model;
+
+            in vec3 position;
+
+            void main() {
+              vec4 position_global = model * vec4(position, 1.0);
+              vec4 position_eye = view * position_global;
+
+              gl_Position = projection * position_eye;
+            }
+          "#,
+          &str::replace(r#"
+            #version 330
+            layout(std140) uniform;
+
+            const float SCREEN_GAMMA = 2.2;
+            const float INTENSITY = 20.0;
+
+            uniform uint eye_i;
+            uniform bool is_anaglyph;
+
+            out vec4 color;
+
+            vec3 make_anaglyph(vec3 color, uint eye_i, bool is_anaglyph) {
+              if(is_anaglyph) {
+                if(eye_i == 0u) {
+                  vec3 coefficients = vec3(0.7, 0.15, 0.15);
+                  return vec3(dot(color, coefficients), 0.0, 0.0);
+                } else {
+                  return vec3(0.0, color.g, color.b);
+                }
+              } else {
+                return color;
+              }
+            }
+
+            void main() {
+              vec3 black = vec3(0.0);
+              color = vec4(make_anaglyph(black, eye_i, is_anaglyph), 1.0);
+            }
+          "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
+          None).unwrap()
 }
 
 fn construct_program<F>(display: &F) -> Program

@@ -164,7 +164,7 @@ impl InputHandler {
               KeyboardInput { virtual_keycode, .. } => match virtual_keycode {
 
                 // the following are instantaneous actions
-                Some(VirtualKeyCode::Q)         => if gui.is_visible { actions.push(Action::Quit) },
+                Some(VirtualKeyCode::Q)         => actions.push(Action::Quit),
                 Some(VirtualKeyCode::Escape)    => if key_is_pressed { actions.push(Action::GuiToggleMenu) },
                 Some(VirtualKeyCode::Up)        => if key_is_pressed { actions.push(Action::GuiSelectPrevious) },
                 Some(VirtualKeyCode::Down)      => if key_is_pressed { actions.push(Action::GuiSelectNext) },
@@ -178,6 +178,7 @@ impl InputHandler {
                 Some(VirtualKeyCode::F1)        => if key_is_pressed { if !vr_mode { actions.push(Action::StereoNone) } },
                 Some(VirtualKeyCode::F2)        => if key_is_pressed { actions.push(Action::StereoCross) },
                 Some(VirtualKeyCode::F3)        => if key_is_pressed { actions.push(Action::StereoAnaglyph) },
+                Some(VirtualKeyCode::B)         => if key_is_pressed { actions.push(Action::ToggleBoundingBox) },
                 Some(VirtualKeyCode::Key1)      => if key_is_pressed { actions.push(Action::VisualizeOneD) },
                 Some(VirtualKeyCode::Key2)      => if key_is_pressed { actions.push(Action::VisualizeTwoD) },
                 Some(VirtualKeyCode::Key3)      => if key_is_pressed { actions.push(Action::VisualizeThreeD) },

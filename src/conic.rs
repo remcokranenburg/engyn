@@ -28,10 +28,10 @@ use glium::Surface;
 use glium::VertexBuffer;
 use std::f32;
 
+use drawable::Drawable;
 use gui::Action;
 use math;
 use light::Light;
-use object::Drawable;
 
 #[derive(Copy, Clone)]
 pub struct ConicVertex {
@@ -135,9 +135,9 @@ impl Conic {
 }
 
 impl Drawable for Conic {
-  fn draw(&mut self, target: &mut SimpleFrameBuffer, projection: [[f32; 4]; 4], view: [[f32; 4]; 4],
-      model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32, _: &[Light; 32],
-      eye_i: usize, is_anaglyph: bool) {
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, context: &Facade, projection: [[f32; 4]; 4],
+      view: [[f32; 4]; 4], model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32,
+      _: &[Light; 32], eye_i: usize, is_anaglyph: bool, show_bbox: bool) {
     let uniforms = uniform! {
       projection: projection,
       view: view,

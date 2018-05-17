@@ -38,7 +38,7 @@ use geometry::Vertex;
 use gui::Action;
 use light::Light;
 use math;
-use object::Drawable;
+use drawable::Drawable;
 use object::Object;
 
 fn normalize(x: Vec<f32>) -> Vec<f32> {
@@ -316,9 +316,9 @@ impl Benchmark {
 }
 
 impl Drawable for Benchmark {
-  fn draw(&mut self, target: &mut SimpleFrameBuffer,
-      projection: [[f32; 4]; 4], view: [[f32; 4]; 4], model_transform: Matrix4<f32>,
-      render_params: &DrawParameters, _: i32, _: &[Light; 32], eye_i: usize, is_anaglyph: bool) {
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, context: &Facade, projection: [[f32; 4]; 4],
+      view: [[f32; 4]; 4], model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32,
+      _: &[Light; 32], eye_i: usize, is_anaglyph: bool, show_bbox: bool) {
     let uniforms = uniform! {
       projection: projection,
       view: view,

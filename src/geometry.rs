@@ -20,6 +20,7 @@ use glium::backend::Facade;
 use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
 use glium::vertex::VertexBuffer;
+use std::f32;
 use std::path::Path;
 use tobj;
 
@@ -45,6 +46,7 @@ pub struct Normal {
 implement_vertex!(Normal, normal);
 
 pub struct Geometry {
+  pub bounding_box: ([f32; 3], [f32; 3]),
   pub indices: Option<IndexBuffer<u32>>,
   pub normals: VertexBuffer<Normal>,
   pub vertices: VertexBuffer<Vertex>,
@@ -77,6 +79,11 @@ impl Geometry {
       }
     }
 
+    let mut bounding_box = (
+      [f32::INFINITY; 3],
+      [f32::NEG_INFINITY; 3],
+    );
+
     let mut vertices = VertexBuffer::empty(context, mesh.positions.len()).unwrap();
     {
       let mut mapped = vertices.map();
@@ -86,8 +93,15 @@ impl Geometry {
           mesh.positions[i * 3 + 1],
           mesh.positions[i * 3 + 2],
         )};
+
+        for j in 0..bounding_box.0.len() {
+          bounding_box.0[j] = bounding_box.0[j].min(mesh.positions[i * 3 + j]);
+          bounding_box.1[j] = bounding_box.1[j].max(mesh.positions[i * 3 + j]);
+        }
       }
     }
+
+
 
     let mut texcoords = VertexBuffer::empty(context, mesh.texcoords.len()).unwrap();
     {
@@ -101,6 +115,7 @@ impl Geometry {
     }
 
     Geometry {
+      bounding_box: bounding_box,
       indices: indices,
       normals: normals,
       vertices: vertices,
@@ -113,6 +128,10 @@ impl Geometry {
     let height_half = size[1] * 0.5;
 
     Geometry {
+      bounding_box: (
+        [-width_half, -height_half, 0.0],
+        [width_half, height_half, 0.0],
+      ),
       indices: Some(IndexBuffer::new(
           context,
           PrimitiveType::TriangleStrip,
@@ -149,6 +168,10 @@ impl Geometry {
     let height_half = size[1] * 0.5;
 
     Geometry {
+      bounding_box: (
+        [-width_half, -height_half, 0.0],
+        [width_half, height_half, 0.0],
+      ),
       indices: None,
       normals: VertexBuffer::new(context, &[
           Normal { normal: (0.0, 0.0, 1.0) },
