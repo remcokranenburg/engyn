@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Remco Kranenburg
+// Copyright (c) 2018 Remco Kranenburg
 //
 // GNU GENERAL PUBLIC LICENSE
 //    Version 3, 29 June 2007
