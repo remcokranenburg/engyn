@@ -145,6 +145,7 @@ impl Benchmark {
       children: Vec::new(),
       drawable: Some(Box::new(self)),
       transform: Matrix4::identity(),
+      size: 0.0,
     }
   }
 

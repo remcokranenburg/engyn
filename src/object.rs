@@ -28,6 +28,7 @@ use glium::index::PrimitiveType;
 use glium::IndexBuffer;
 use glium::VertexBuffer;
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::f32;
 use std::path::MAIN_SEPARATOR;
 use std::path::Path;
@@ -48,6 +49,7 @@ pub struct Object {
   pub children: Vec<Object>,
   pub drawable: Option<Box<Drawable>>,
   pub transform: Matrix4<f32>,
+  pub size: f32,
 }
 
 impl Object {
@@ -96,7 +98,10 @@ impl Object {
           bounding_box.0[i] = bounding_box.0[i].min(pos[i]);
           bounding_box.1[i] = bounding_box.1[i].max(pos[i]);
         }
+
       }
+
+      let size = (0..3).map(|i| (bounding_box.1[i] - bounding_box.0[i]).powi(2)).sum();
 
       for i in 0..bounding_box.0.len() {
         global_bounding_box.0[i] = global_bounding_box.0[i].min(bounding_box.0[i]);
@@ -158,8 +163,19 @@ impl Object {
             Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
             resource_manager))),
         transform: Matrix4::<f32>::identity(),
+        size: size,
       });
     }
+
+    objects.sort_unstable_by(|a, b| {
+      if b.size < a.size {
+        Ordering::Less
+      } else if b.size > a.size {
+        Ordering::Greater
+      } else {
+        Ordering::Equal
+      }
+    });
 
     let lengths = global_bounding_box.1.iter().zip(global_bounding_box.0.iter()).map(|x| x.0 - x.1);
     let target_length = 450.0; // 2²+2²+2²
@@ -172,6 +188,7 @@ impl Object {
       children: objects,
       drawable: None,
       transform: translation * scale,
+      size: 0.0,
     }
   }
 
@@ -180,9 +197,9 @@ impl Object {
       -> Object
       where F: Facade {
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
-    let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
+    let scale_mat = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
     let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
-    let matrix = translation * scale * rotation;
+    let matrix = translation * scale_mat * rotation;
 
     Object {
       children: Vec::new(),
@@ -192,6 +209,7 @@ impl Object {
           material,
           resource_manager))),
       transform: matrix,
+      size: size[0] * scale[0] * size[1] * scale[1],
     }
   }
 
@@ -200,9 +218,9 @@ impl Object {
       -> Object
       where F: Facade{
     let rotation = Matrix4::from(Euler { x: Rad(rot[0]), y: Rad(rot[1]), z: Rad(rot[2]) });
-    let scale = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
+    let scale_mat = Matrix4::from_nonuniform_scale(scale[0], scale[1], scale[2]);
     let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], pos[2]));
-    let matrix = translation * scale * rotation;
+    let matrix = translation * scale_mat * rotation;
 
     Object {
       children: Vec::new(),
@@ -212,9 +230,9 @@ impl Object {
           material,
           resource_manager))),
       transform: matrix,
+      size: (size[0] * scale[0] * size[1] * scale[1]).sqrt(),
     }
   }
-
 
   pub fn draw(&mut self, quality_level: f32, i: u32, num_objects: u32,
       target: &mut SimpleFrameBuffer, context: &Facade, projection: [[f32; 4]; 4],
@@ -224,7 +242,6 @@ impl Object {
     self.draw_recurse(quality_level, i, num_objects, target, context, projection, view, root, render_params,
         num_lights, lights, eye_i, is_anaglyph, show_bbox)
   }
-
 
   fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer, context: &Facade,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,

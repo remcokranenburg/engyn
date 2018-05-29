@@ -455,6 +455,7 @@ fn main() {
           Rc::clone(&terrain_material),
           &resource_manager))),
       transform: Matrix4::<f32>::identity(),
+      size: f32::INFINITY,
     });
 
     // a teapot
@@ -508,6 +509,7 @@ fn main() {
           0.0, 0.005, 0.0, 0.0,
           0.0, 0.0, 0.005, 0.0,
           0.0, 1.0, 0.0, 1.0),
+      size: (0..3).map(|i| (my_teapot_bounding_box.1[i] - my_teapot_bounding_box.0[i]).powi(2)).sum(),
     };
 
     world.push(my_teapot);
@@ -520,6 +522,7 @@ fn main() {
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
             0.0, 1.0, -1.0, 1.0),
+        size: 0.0,
     };
 
     world.push(my_conic);
@@ -532,6 +535,7 @@ fn main() {
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
             0.0, 1.0, 1.0, 1.0),
+        size: 0.0,
     };
 
     world.push(my_network);
@@ -580,6 +584,7 @@ fn main() {
           Rc::clone(&marble_material),
           &resource_manager))),
       transform: Matrix4::<f32>::identity(),
+      size: f32::INFINITY,
     });
   }
 
