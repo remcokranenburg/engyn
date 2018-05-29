@@ -63,11 +63,11 @@ impl Quality {
 
     let original_level = *self.level.borrow();
 
-    if ratio_remaining < 0.05 {
+    if ratio_remaining < 0.1 {
       *self.level.borrow_mut() = f32::max(original_level * 0.5, 0.0001);
-    } else if ratio_remaining < 0.2 {
-      *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0001);
-    } else if ratio_remaining > 0.8 {
+    } else if ratio_remaining < 0.3 {
+      //*self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0001);
+    } else if ratio_remaining > 0.9 {
       *self.level.borrow_mut() = f32::min(original_level * 2.0, 1.0);
     } else {
       *self.level.borrow_mut() = f32::min(original_level * 1.01, 1.0);
