@@ -70,6 +70,7 @@ use glium::Depth;
 use glium::DepthTest;
 use glium::Display;
 use glium::DrawParameters;
+use glium::draw_parameters::BackfaceCullingMode;
 use glium::Rect;
 use glium::Surface;
 use glium::glutin::EventsLoop;
@@ -562,6 +563,7 @@ fn main() {
 
   let mut render_params = DrawParameters {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
+    backface_culling: BackfaceCullingMode::CullClockwise,
     .. Default::default()
   };
 
