@@ -419,11 +419,13 @@ fn main() {
 
   let marble_material = Rc::new(RefCell::new(Material {
     albedo_map: resource_manager.get_texture("data/marble.jpg").unwrap(),
+    diffuse_color: [0.0, 0.0, 0.0],
     metalness: 0.0,
     reflectivity: 0.0,
   }));
   let terrain_material = Rc::new(RefCell::new(Material {
     albedo_map: resource_manager.get_texture("data/terrain.png").unwrap(),
+    diffuse_color: [0.0, 0.0, 0.0],
     metalness: 0.0,
     reflectivity: 0.0,
   }));
@@ -547,6 +549,7 @@ fn main() {
   // empty texture to force glutin clean
   let mut empty = Object::new_plane(&display, &resource_manager, Rc::new(RefCell::new(Material {
         albedo_map: resource_manager.get_texture("data/empty.bmp").unwrap(),
+        diffuse_color: [0.0, 0.0, 0.0],
         metalness: 0.0,
         reflectivity: 0.0,
       })),

@@ -81,6 +81,7 @@ impl Drawable for Mesh {
       view: view,
       model: math::matrix_to_uniform(model_transform),
       albedo_map: &albedo_map.borrow(),
+      diffuse_color: self.material.borrow().diffuse_color,
       metalness: self.material.borrow().metalness,
       reflectivity: self.material.borrow().reflectivity,
       num_lights: num_lights,
@@ -239,6 +240,7 @@ fn construct_program<F>(display: &F) -> Program
           vec3 position;
         };
 
+        uniform vec3 model_diffuse_color;
         uniform sampler2D albedo_map;
         uniform int num_lights;
         uniform Light lights[MAX_NUM_LIGHTS];
@@ -282,7 +284,7 @@ fn construct_program<F>(display: &F) -> Program
 
         void main() {
           vec3 normal = normalize(v_normal);
-          vec3 material_color = vec3(texture(albedo_map, v_texcoord));
+          vec3 material_color = vec3(texture(albedo_map, v_texcoord)) + model_diffuse_color;
           vec3 color_linear = vec3(0.0);
 
           for(int i = 0; i < num_lights; i++) {

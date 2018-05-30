@@ -22,6 +22,7 @@ use std::rc::Rc;
 
 pub struct Material {
   pub albedo_map: Rc<RefCell<SrgbTexture2d>>,
+  pub diffuse_color: [f32; 3],
   pub metalness: f32,
   pub reflectivity: f32,
 }

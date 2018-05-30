@@ -70,6 +70,7 @@ impl Object {
 
       materials.push(Rc::new(RefCell::new(Material {
         albedo_map: Rc::clone(&albedo_map),
+        diffuse_color: mtl.diffuse,
         metalness: 0.0,
         reflectivity: 0.0,
       })));
