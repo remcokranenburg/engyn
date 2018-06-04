@@ -127,27 +127,26 @@ impl FramePerformance {
     self.frame_count
   }
 
-  pub fn get_predicted_remaining_time(&self) -> u32 {
+  pub fn get_remaining_times(&self) -> Vec<u32> {
     let mut log_rev_iter = self.log.iter().rev();
+    let mut remaining_times = Vec::new();
 
-    let last_draw_time = match log_rev_iter.next() {
-      Some(entry) => entry.draw_time as i32,
-      None => 0,
-    };
+    for _ in 0 .. 5 {
+      if let Some(entry) = log_rev_iter.next() {
+        remaining_times.push(entry.draw_time);
+      }
+    }
 
-    let second_to_last_draw_time = match log_rev_iter.next() {
-      Some(entry) => entry.draw_time as i32,
-      None => 0,
-    };
+    remaining_times
+  }
 
-    let diff = last_draw_time - second_to_last_draw_time;
+  pub fn get_predicted_remaining_time(&self) -> u32 {
+    let remaining_times = self.get_remaining_times();
 
+    let last_remaining_time = *remaining_times.first().unwrap_or(&0);
 
     // predict next remaining time as: target - (last draw time + diff)
-    let predicted_remaining = cmp::max(0, self.get_target_frame_time() as i32 - (last_draw_time + diff)) as u32;
-
-    // println!("last: {}, second_to_last: {}, diff: {}, predicted_remaining: {}", last_draw_time,
-    //     second_to_last_draw_time, diff, predicted_remaining);
+    let predicted_remaining = cmp::max(0, self.get_target_frame_time() as i32 - last_remaining_time as i32) as u32;
 
     predicted_remaining
   }

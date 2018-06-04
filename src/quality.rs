@@ -40,9 +40,9 @@ impl Quality {
       weights[1],
       weights[2],
     ) } else { (
-      0.3,
-      0.6,
-      1.0,
+      0.50,
+      0.01,
+      1.00,
     ) };
 
     Quality {
@@ -65,8 +65,10 @@ impl Quality {
 
     if ratio_remaining < 0.1 {
       *self.level.borrow_mut() = f32::max(original_level * 0.5, 0.0001);
+    } else if ratio_remaining < 0.2 {
+       *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0001);
     } else if ratio_remaining < 0.3 {
-      //*self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0001);
+      // between 0.2 and 0.3, do nothing
     } else if ratio_remaining > 0.9 {
       *self.level.borrow_mut() = f32::min(original_level * 2.0, 1.0);
     } else {
