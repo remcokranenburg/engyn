@@ -29,7 +29,10 @@ pub struct ObjectUniforms<'a> {
   pub view: [[f32; 4]; 4],
   pub model: [[f32; 4]; 4],
   pub albedo_map: &'a SrgbTexture2d,
+  pub ambient_color: [f32; 3],
   pub diffuse_color: [f32; 3],
+  pub specular_color: [f32; 3],
+  pub shininess: f32,
   pub metalness: f32,
   pub reflectivity: f32,
   pub num_lights: i32,
@@ -44,7 +47,10 @@ impl<'a> Uniforms for ObjectUniforms<'a> {
     f("view", UniformValue::Mat4(self.view));
     f("model", UniformValue::Mat4(self.model));
     f("albedo_map", UniformValue::SrgbTexture2d(self.albedo_map, None));
+    f("ambient_color", UniformValue::Vec3(self.ambient_color));
     f("diffuse_color", UniformValue::Vec3(self.diffuse_color));
+    f("specular_color", UniformValue::Vec3(self.specular_color));
+    f("shininess", UniformValue::Float(self.shininess));
     f("metalness", UniformValue::Float(self.metalness));
     f("reflectivity", UniformValue::Float(self.reflectivity));
     f("num_lights", UniformValue::SignedInt(self.num_lights));

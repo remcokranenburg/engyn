@@ -419,13 +419,19 @@ fn main() {
 
   let marble_material = Rc::new(RefCell::new(Material {
     albedo_map: resource_manager.get_texture("data/marble.jpg").unwrap(),
+    ambient_color: [0.0, 0.0, 0.0],
     diffuse_color: [0.0, 0.0, 0.0],
+    specular_color: [1.0, 1.0, 1.0],
+    shininess: 1.0,
     metalness: 0.0,
     reflectivity: 0.0,
   }));
   let terrain_material = Rc::new(RefCell::new(Material {
     albedo_map: resource_manager.get_texture("data/terrain.png").unwrap(),
+    ambient_color: [0.0, 0.0, 0.0],
     diffuse_color: [0.0, 0.0, 0.0],
+    specular_color: [0.0, 0.0, 0.0],
+    shininess: 0.0,
     metalness: 0.0,
     reflectivity: 0.0,
   }));
@@ -549,7 +555,10 @@ fn main() {
   // empty texture to force glutin clean
   let mut empty = Object::new_plane(&display, &resource_manager, Rc::new(RefCell::new(Material {
         albedo_map: resource_manager.get_texture("data/empty.bmp").unwrap(),
+        ambient_color: [0.0, 0.0, 0.0],
         diffuse_color: [0.0, 0.0, 0.0],
+        specular_color: [0.0, 0.0, 0.0],
+        shininess: 0.0,
         metalness: 0.0,
         reflectivity: 0.0,
       })),
@@ -557,16 +566,16 @@ fn main() {
 
   // add a light
 
-  let num_lights = 4;
+  let num_lights = 1;
   let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
   lights[0] = Light { color: [1.0, 0.9, 0.9], position: [10.0, 10.0, 10.0] };
-  lights[1] = Light { color: [0.9, 1.0, 0.9], position: [10.0, 10.0, -10.0] };
-  lights[2] = Light { color: [0.9, 0.9, 1.0], position: [-10.0, 10.0, -10.0] };
-  lights[3] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
+  // lights[1] = Light { color: [0.9, 1.0, 0.9], position: [10.0, 10.0, -10.0] };
+  // lights[2] = Light { color: [0.9, 0.9, 1.0], position: [-10.0, 10.0, -10.0] };
+  // lights[3] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
 
   let mut render_params = DrawParameters {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
-    backface_culling: BackfaceCullingMode::CullClockwise,
+    //backface_culling: BackfaceCullingMode::CullClockwise,
     .. Default::default()
   };
 

@@ -74,16 +74,18 @@ impl Drawable for Mesh {
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], model_transform: Matrix4<f32>,
       render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32], eye_i: usize,
       is_anaglyph: bool, show_bbox: bool) {
-    let albedo_map = &self.material.borrow().albedo_map;
-
+    let material_ref = self.material.borrow();
     let uniforms = ObjectUniforms {
       projection: projection,
       view: view,
       model: math::matrix_to_uniform(model_transform),
-      albedo_map: &albedo_map.borrow(),
-      diffuse_color: self.material.borrow().diffuse_color,
-      metalness: self.material.borrow().metalness,
-      reflectivity: self.material.borrow().reflectivity,
+      albedo_map: &material_ref.albedo_map.borrow(),
+      ambient_color: material_ref.ambient_color,
+      diffuse_color: material_ref.diffuse_color,
+      specular_color: material_ref.specular_color,
+      shininess: material_ref.shininess,
+      metalness: material_ref.metalness,
+      reflectivity: material_ref.reflectivity,
       num_lights: num_lights,
       lights: *lights,
       eye_i: eye_i,
@@ -233,14 +235,18 @@ fn construct_program<F>(display: &F) -> Program
         layout(std140) uniform;
 
         const float SCREEN_GAMMA = 2.2;
-        const float INTENSITY = 20.0;
+        const float INTENSITY = 1.0;
 
         struct Light {
           vec3 color;
           vec3 position;
         };
 
-        uniform vec3 model_diffuse_color;
+        uniform vec3 ambient_color;
+        uniform vec3 diffuse_color;
+        uniform vec3 specular_color;
+        uniform float shininess;
+        uniform float dissolve;
         uniform sampler2D albedo_map;
         uniform int num_lights;
         uniform Light lights[MAX_NUM_LIGHTS];
@@ -253,20 +259,32 @@ fn construct_program<F>(display: &F) -> Program
 
         out vec4 color;
 
-        vec3 attenuate(vec3 color, vec3 light_position, float radius, vec3 surface_position) {
-          float dist = distance(light_position, surface_position);
-          float attenuation_factor = clamp(1.0 - dist * dist / (radius * radius), 0.0, 1.0);
-          attenuation_factor *= attenuation_factor;
-          return color * attenuation_factor;
-        }
-
         vec3 calculate_lighting(
             vec3 light_position,
+            vec3 light_color,
             vec3 normal,
-            vec3 combined_color) {
+            vec3 ambient_color,
+            vec3 diffuse_color,
+            vec3 specular_color,
+            float shininess) {
           vec3 light_direction = normalize(light_position - v_vertex_position);
-          float lambertian = max(dot(light_direction, normal), 0.0);
-          return lambertian * combined_color;
+          float diffuse_fraction = max(dot(light_direction, normal), 0.0);
+          float distance = length(light_direction);
+          distance = distance * distance;
+
+          vec3 ambient = ambient_color;
+          vec3 diffuse = diffuse_color * diffuse_fraction * light_color * INTENSITY / distance;
+          vec3 specular = vec3(0.0);
+
+          if(diffuse_fraction > 0.0) {
+            vec3 view_direction = normalize(-v_vertex_position);
+            vec3 reflection_direction = reflect(-light_direction, normal);
+            float specular_angle = max(dot(reflection_direction, view_direction), 0.0);
+            float specular_fraction = pow(specular_angle, shininess * 0.25);
+            specular = specular_color * specular_fraction * light_color * INTENSITY / distance;
+          }
+
+          return ambient * 0.01 + diffuse + specular;
         }
 
         vec3 make_anaglyph(vec3 color, uint eye_i, bool is_anaglyph) {
@@ -284,17 +302,24 @@ fn construct_program<F>(display: &F) -> Program
 
         void main() {
           vec3 normal = normalize(v_normal);
-          vec3 material_color = vec3(texture(albedo_map, v_texcoord)) + model_diffuse_color;
+          vec3 diffuse_texture = vec3(texture(albedo_map, v_texcoord));
           vec3 color_linear = vec3(0.0);
 
           for(int i = 0; i < num_lights; i++) {
-            vec3 color_one_light = calculate_lighting(lights[i].position, normal, lights[i].color * material_color);
-            color_one_light = attenuate(color_one_light, lights[i].position, INTENSITY, v_vertex_position);
+            vec3 color_one_light = calculate_lighting(
+                lights[i].position,
+                lights[i].color,
+                normal,
+                ambient_color,
+                diffuse_texture + diffuse_color,
+                specular_color,
+                20.0); //shininess);
             color_linear += color_one_light;
           }
 
-          vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
-          color = vec4(make_anaglyph(color_gamma_corrected, eye_i, is_anaglyph), 1.0);
+          vec3 color_gamma_corrected = color_linear;
+          //vec3 color_gamma_corrected = pow(color_linear, vec3(1.0 / SCREEN_GAMMA)); // assumes textures are linearized (i.e. not sRGB))
+          color = vec4(make_anaglyph(color_gamma_corrected, eye_i, is_anaglyph), dissolve);
         }
       "#, "MAX_NUM_LIGHTS", &format!("{}", uniforms::MAX_NUM_LIGHTS)),
       None).unwrap()
