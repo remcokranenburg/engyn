@@ -21,6 +21,7 @@ use cgmath::Rad;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
+use glium::Display;
 use glium::DrawParameters;
 use glium::backend::Facade;
 use glium::framebuffer::SimpleFrameBuffer;
@@ -239,7 +240,7 @@ impl Object {
   }
 
   pub fn draw(&mut self, quality_level: f32, i: u32, num_objects: u32,
-      target: &mut SimpleFrameBuffer, context: &Facade, projection: [[f32; 4]; 4],
+      target: &mut SimpleFrameBuffer, context: &Display, projection: [[f32; 4]; 4],
       view: [[f32; 4]; 4], render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32],
       eye_i: usize, is_anaglyph: bool, show_bbox: bool) -> u32 {
     let root = Matrix4::<f32>::identity();
@@ -247,7 +248,7 @@ impl Object {
         num_lights, lights, eye_i, is_anaglyph, show_bbox)
   }
 
-  fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer, context: &Facade,
+  fn draw_recurse(&mut self, quality_level: f32, i: u32, num_objects: u32, target: &mut SimpleFrameBuffer, context: &Display,
       projection: [[f32; 4]; 4], view: [[f32; 4]; 4], group: Matrix4<f32>,
       render_params: &DrawParameters, num_lights: i32, lights: &[Light; 32], eye_i: usize,
       is_anaglyph: bool, show_bbox: bool) -> u32 {
@@ -260,6 +261,11 @@ impl Object {
     }
 
     let mut result = i + 1;
+
+    if i == (1 * num_objects / 4) || i == (2 * num_objects / 4) || i == (3 * num_objects / 4) {
+      context.flush();
+    }
+
     for object in &mut self.children {
       if quality_level > (result as f32 / num_objects as f32) {
         result = object.draw_recurse(quality_level, result, num_objects, target, context, projection, view,
