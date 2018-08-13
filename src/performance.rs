@@ -101,12 +101,6 @@ impl FramePerformance {
   }
 
   pub fn get_predicted_remaining_time(&self) -> u32 {
-    // TODO: linear regression to better predict remaining time
-    // c = correlation(xValues, yValues)
-    // b = c * (stdev(yValues) / stdev(xValues))
-    // a = mean(yValues) - b * mean(xValues)
-    // y = b * x + a
-
     let remaining_times = self.get_remaining_times();
     let last_remaining_time = *remaining_times.first().unwrap_or(&0);
 
