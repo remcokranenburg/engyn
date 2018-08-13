@@ -42,14 +42,14 @@ use uniforms;
 use uniforms::ObjectUniforms;
 
 pub struct Mesh {
-  pub geometry: Geometry,
+  pub geometry: Rc<RefCell<Geometry>>,
   pub material: Rc<RefCell<Material>>,
   pub program: Rc<RefCell<Program>>,
   pub bbox_program: Rc<RefCell<Program>>,
 }
 
 impl Mesh {
-  pub fn new<F>(display: &F, geometry: Geometry, material: Rc<RefCell<Material>>,
+  pub fn new<F>(display: &F, geometry: Rc<RefCell<Geometry>>, material: Rc<RefCell<Material>>,
       resource_manager: &ResourceManager) -> Mesh
       where F: Facade {
     let program = resource_manager.get_program("programs/mesh_program", &|| {
@@ -92,15 +92,17 @@ impl Drawable for Mesh {
       is_anaglyph: is_anaglyph,
     };
 
-    match self.geometry.indices {
+    let geometry = self.geometry.borrow();
+
+    match geometry.indices {
       Some(ref indices) => target.draw(
-        (&self.geometry.vertices, &self.geometry.normals, &self.geometry.texcoords),
+        (&geometry.vertices, &geometry.normals, &geometry.texcoords),
         indices,
         &self.program.borrow(),
         &uniforms,
         render_params).unwrap(),
       None => target.draw(
-        (&self.geometry.vertices, &self.geometry.normals, &self.geometry.texcoords),
+        (&geometry.vertices, &geometry.normals, &geometry.texcoords),
         NoIndices(PrimitiveType::TrianglesList),
         &self.program.borrow(),
         &uniforms,
@@ -108,7 +110,7 @@ impl Drawable for Mesh {
     }
 
     if show_bbox {
-      let bbox = &self.geometry.bounding_box;
+      let bbox = &geometry.bounding_box;
       let bbox_vertices = VertexBuffer::new(context, &[
         Vertex { position: (bbox.0[0], bbox.0[1], bbox.0[2]) },
         Vertex { position: (bbox.1[0], bbox.0[1], bbox.0[2]) },

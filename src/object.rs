@@ -157,13 +157,13 @@ impl Object {
         children: Vec::new(),
         drawable: Some(Box::new(Mesh::new(
             context,
-            Geometry {
+            Rc::new(RefCell::new(Geometry {
               bounding_box,
               indices: indices,
               normals: normals,
               vertices: vertices,
               texcoords: texcoords,
-            },
+            })),
             Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
             resource_manager))),
         transform: Matrix4::<f32>::identity(),
@@ -209,7 +209,7 @@ impl Object {
       children: Vec::new(),
       drawable: Some(Box::new(Mesh::new(
           context,
-          Geometry::new_quad(context, size, false),
+          Rc::new(RefCell::new(Geometry::new_quad(context, size, false))),
           material,
           resource_manager))),
       transform: matrix,
@@ -230,7 +230,7 @@ impl Object {
       children: Vec::new(),
       drawable: Some(Box::new(Mesh::new(
           context,
-          Geometry::new_triangle(context, size),
+          Rc::new(RefCell::new(Geometry::new_triangle(context, size))),
           material,
           resource_manager))),
       transform: matrix,

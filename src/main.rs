@@ -462,7 +462,7 @@ fn main() {
       children: Vec::new(),
       drawable: Some(Box::new(Mesh::new(
           &display,
-          Geometry::from_obj(&display, "data/terrain.obj"),
+          resource_manager.get_geometry("data/terrain.obj").unwrap(),
           Rc::clone(&terrain_material),
           &resource_manager))),
       transform: Matrix4::<f32>::identity(),
@@ -503,7 +503,7 @@ fn main() {
       children: Vec::new(),
       drawable: Some(Box::new(Mesh::new(
           &display,
-          Geometry {
+          Rc::new(RefCell::new(Geometry {
             bounding_box: my_teapot_bounding_box,
             indices: Some(IndexBuffer::new(
                 &display,
@@ -512,7 +512,7 @@ fn main() {
             normals: VertexBuffer::new(&display, &teapot::NORMALS).unwrap(),
             vertices: VertexBuffer::new(&display, &teapot::VERTICES).unwrap(),
             texcoords: VertexBuffer::new(&display, &my_teapot_texcoords).unwrap(),
-          },
+          })),
           Rc::clone(&marble_material),
           &resource_manager))),
       transform: Matrix4::new(
@@ -596,7 +596,7 @@ fn main() {
       children: Vec::new(),
       drawable: Some(Box::new(Mesh::new(
           &display,
-          Geometry::from_obj(&display, "data/vive-controller.obj"),
+          resource_manager.get_geometry("data/vive-controller.obj").unwrap(),
           Rc::clone(&marble_material),
           &resource_manager))),
       transform: Matrix4::<f32>::identity(),
