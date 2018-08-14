@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::cmp;
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::time::Instant;
 
@@ -31,11 +32,7 @@ const TARGET_FRAME_TIMES: [u32; 5] = [
 ];
 
 pub struct LogEntry {
-  pub frame_time: u32,
-  pub sync_poses_time: u32,
-  pub sync_frame_data_time: u32,
-  pub draw_time: u32,
-  pub post_draw_time: u32,
+  pub event_instants: HashMap<String, Instant>,
   pub target_resolution: f32,
   pub target_msaa: f32,
   pub target_lod: f32,
@@ -43,13 +40,7 @@ pub struct LogEntry {
 
 pub struct FramePerformance {
   log: Vec<LogEntry>,
-  time_frame_start: Instant,
-  time_sync_poses: Instant,
-  time_sync_frame_data: Instant,
-  time_draw_start: Instant,
-  time_draw_end: Instant,
-  time_frame_end: Instant,
-  frame_count: i32,
+  event_instants: HashMap<String, Instant>,
   current_fps_target: usize,
   target_resolution: f32,
   target_msaa: f32,
@@ -58,17 +49,9 @@ pub struct FramePerformance {
 
 impl FramePerformance {
   pub fn new(vr_mode: bool) -> FramePerformance {
-    let now = Instant::now();
-
     FramePerformance {
       log: Vec::new(),
-      time_frame_start: now,
-      time_sync_poses: now,
-      time_sync_frame_data: now,
-      time_draw_start: now,
-      time_draw_end: now,
-      time_frame_end: now,
-      frame_count: 0,
+      event_instants: HashMap::new(),
       current_fps_target: if vr_mode { 0 } else { 3 },
       target_resolution: 0.0,
       target_msaa: 0.0,
@@ -76,64 +59,41 @@ impl FramePerformance {
     }
   }
 
-  pub fn reset_frame_count(&mut self) {
-    self.frame_count = 0;
+  pub fn process_event(&mut self, event: &str) {
+    self.event_instants.insert(event.to_owned(), Instant::now());
   }
 
-  pub fn process_frame_start(&mut self,quality: &Quality) {
-    let time_new_frame = Instant::now();
-
-    // write log entry for previous frame
-    self.log.push(LogEntry {
-      frame_time: time_new_frame.duration_since(self.time_frame_start).subsec_nanos(),
-      sync_poses_time: self.time_sync_poses.duration_since(self.time_frame_start).subsec_nanos(),
-      sync_frame_data_time: self.time_sync_frame_data.duration_since(self.time_sync_poses).subsec_nanos(),
-      draw_time: self.time_draw_end.duration_since(self.time_draw_start).subsec_nanos(),
-      post_draw_time: self.time_frame_end.duration_since(self.time_draw_end).subsec_nanos(),
-      target_resolution: self.target_resolution,
-      target_msaa: self.target_msaa,
-      target_lod: self.target_lod,
-    });
-
-    self.frame_count += 1;
-    self.time_frame_start = time_new_frame;
+  pub fn start_frame(&mut self, quality: &Quality) {
     let targets = quality.get_target_levels();
     self.target_resolution = targets.0;
     self.target_msaa = targets.1;
     self.target_lod = targets.2;
   }
 
-  pub fn process_sync_poses(&mut self) {
-    self.time_sync_poses = Instant::now();
+  pub fn record_frame_log(&mut self) {
+    self.log.push(LogEntry {
+      event_instants: self.event_instants.clone(),
+      target_resolution: self.target_resolution,
+      target_msaa: self.target_msaa,
+      target_lod: self.target_lod,
+    });
   }
 
-  pub fn process_sync_frame_data(&mut self) {
-    self.time_sync_frame_data = Instant::now();
-  }
-
-  pub fn process_draw_start(&mut self) {
-    self.time_draw_start = Instant::now();
-  }
-
-  pub fn process_draw_end(&mut self) {
-    self.time_draw_end = Instant::now();
-  }
-
-  pub fn process_frame_end(&mut self) {
-    self.time_frame_end = Instant::now();
-  }
-
-  pub fn get_frame_number(&self) -> i32 {
-    self.frame_count
+  pub fn get_frame_number(&self) -> usize {
+    self.log.len()
   }
 
   pub fn get_remaining_times(&self) -> Vec<u32> {
     let mut log_rev_iter = self.log.iter().rev();
     let mut remaining_times = Vec::new();
 
-    for _ in 0 .. 5 {
+    for _ in 0 .. 1 {
       if let Some(entry) = log_rev_iter.next() {
-        remaining_times.push(entry.draw_time);
+        let frame_end = entry.event_instants.get("frame_end").unwrap();
+        let frame_start = entry.event_instants.get("frame_start").unwrap();
+        let non_idle_time = frame_end.duration_since(*frame_start).subsec_nanos();
+        let remaining_time = self.get_target_frame_time() as i32 - non_idle_time as i32;
+        remaining_times.push(cmp::max(0, remaining_time as u32));
       }
     }
 
@@ -141,32 +101,70 @@ impl FramePerformance {
   }
 
   pub fn get_predicted_remaining_time(&self) -> u32 {
-    let remaining_times = self.get_remaining_times();
+    // TODO: linear regression to better predict remaining time
+    // c = correlation(xValues, yValues)
+    // b = c * (stdev(yValues) / stdev(xValues))
+    // a = mean(yValues) - b * mean(xValues)
+    // y = b * x + a
 
+    let remaining_times = self.get_remaining_times();
     let last_remaining_time = *remaining_times.first().unwrap_or(&0);
 
-    // predict next remaining time as: target - (last draw time + diff)
-    let predicted_remaining = cmp::max(0, self.get_target_frame_time() as i32 - last_remaining_time as i32) as u32;
-
-    predicted_remaining
+    // predict next remaining time
+    last_remaining_time
   }
 
   pub fn get_target_frame_time(&self) -> u32 {
     TARGET_FRAME_TIMES[self.current_fps_target]
   }
 
+  pub fn get_actual_frame_time(&self, i: usize) -> u32 {
+    let this_frame = self.log.get(i);
+    let next_frame = self.log.get(i + 1);
+
+    if let (Some(this_frame), Some(next_frame)) = (this_frame, next_frame) {
+      let next_frame_start = next_frame.event_instants.get("frame_start").unwrap();
+      let this_frame_start = this_frame.event_instants.get("frame_start").unwrap();
+      next_frame_start.duration_since(*this_frame_start).subsec_nanos()
+    } else {
+      0
+    }
+  }
+
   pub fn to_csv(&self) -> String {
-    let mut log_csv = String::from("Frame,FPS,SyncPoses,SyncFrameData,Draw,PostDraw,Idle,Resolution,MSAA,LOD\n");
+    let keys = vec![
+      "frame_start",
+      "pre_input",
+      "post_input",
+      "pre_update_camera",
+      "post_update_camera",
+      "pre_update_world",
+      "post_update_world",
+      "pre_sync_poses",
+      "post_sync_poses",
+      "pre_sync_frame_data",
+      "post_sync_frame_data",
+      "pre_draw",
+      "post_draw",
+      "frame_end",
+    ];
+
+    let mut log_csv = String::new();
+    log_csv.push_str("Frame,FPS,");
+    log_csv.push_str(&keys.join(","));
+    log_csv.push_str(",Resolution,MSAA,LOD\n");
+
     for (i, frame) in self.log.iter().enumerate() {
-      let fps = 1_000_000_000f64 / (frame.frame_time as f64);
-      write!(&mut log_csv, "{},{},{},{},{},{},{},{},{},{}\n",
-          i,
-          fps,
-          frame.sync_poses_time,
-          frame.sync_frame_data_time,
-          frame.draw_time,
-          frame.post_draw_time,
-          frame.frame_time - frame.sync_poses_time - frame.sync_frame_data_time - frame.draw_time - frame.post_draw_time,
+      let frame_time = self.get_actual_frame_time(i);
+      let fps = 1_000_000_000f64 / (frame_time as f64);
+      write!(&mut log_csv, "{},{},", i, fps).unwrap();
+      for key in &keys {
+        let frame_start_instant = frame.event_instants.get("frame_start").unwrap();
+        let event_instant = frame.event_instants.get(*key).unwrap();
+        let duration = event_instant.duration_since(*frame_start_instant).subsec_nanos();
+        write!(&mut log_csv, "{},", duration).unwrap();
+      }
+      write!(&mut log_csv, ",{},{},{}\n",
           frame.target_resolution,
           frame.target_msaa,
           frame.target_lod).unwrap();

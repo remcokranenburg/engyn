@@ -160,7 +160,6 @@ fn draw_frame(
     demo: &mut Option<Demo>,
     demo_record: bool,
     show_bbox: bool) {
-  frame_performance.process_frame_start(quality);
 
   let aspect_ratio = render_dimensions.0 as f32 / render_dimensions.1 as f32;
   let mono_projection = cgmath::perspective(Deg(45.0), aspect_ratio * 2.0, 0.01f32, 1000.0);
@@ -172,8 +171,9 @@ fn draw_frame(
       right_projection_matrix,
       mut left_view_matrix,
       mut right_view_matrix) = if vr_mode {
+    frame_performance.process_event("pre_sync_poses");
     vr_display.unwrap().borrow_mut().sync_poses();
-    frame_performance.process_sync_poses();
+    frame_performance.process_event("post_sync_poses");
 
     let display_data = vr_display.unwrap().borrow().data();
 
@@ -185,9 +185,9 @@ fn draw_frame(
       math::vec_to_translation(&[0.0, 0.75, 0.0]).inverse_transform().unwrap()
     };
 
+    frame_performance.process_event("pre_sync_frame_data");
     let frame_data = vr_display.unwrap().borrow().synced_frame_data(0.1, 1000.0);
-
-    frame_performance.process_sync_frame_data();
+    frame_performance.process_event("post_sync_frame_data");
 
     let left_projection_matrix = math::vec_to_matrix(&frame_data.left_projection_matrix);
     let right_projection_matrix = math::vec_to_matrix(&frame_data.right_projection_matrix);
@@ -197,12 +197,13 @@ fn draw_frame(
     (standing_transform, left_projection_matrix, right_projection_matrix, left_view_matrix,
         right_view_matrix)
   } else {
-    frame_performance.process_sync_poses();
+    frame_performance.process_event("pre_sync_poses");
+    frame_performance.process_event("post_sync_poses");
 
+    frame_performance.process_event("pre_sync_frame_data");
     let standing_transform = Matrix4::<f32>::identity();
     let view = fps_camera.get_view(0.016); // TODO: get actual timedelta
-
-    frame_performance.process_sync_frame_data();
+    frame_performance.process_event("post_sync_frame_data");
 
     let left_translation = Matrix4::from_translation(Vector3::new(-0.01, 0.0, 0.0));
     let left_view = left_translation * view;
@@ -213,7 +214,7 @@ fn draw_frame(
 
   let inverse_standing_transform = standing_transform.inverse_transform().unwrap();
 
-  frame_performance.process_draw_start();
+  frame_performance.process_event("pre_draw");
 
   // record demo entry
   if let Some(ref mut d) = *demo {
@@ -323,9 +324,11 @@ fn draw_frame(
 
   //assert_no_gl_error!(*display);
 
-  frame_performance.process_draw_end();
+  // if !vr_mode {
+  //   display.finish();
+  // }
 
-  frame_performance.process_frame_end();
+  frame_performance.process_event("post_draw");
 }
 
 fn main() {
@@ -625,8 +628,6 @@ fn main() {
   for target_resolution in range.clone() {
     for target_msaa in range.clone() {
       for target_lod in range.clone() {
-        frame_performance.reset_frame_count();
-
         if benchmarking {
           quality.set_target_levels((
             target_resolution as f32 * target_steps,
@@ -640,6 +641,10 @@ fn main() {
           let targets = quality.get_target_levels();
           canvas.set_resolution_scale(targets.0);
           canvas.set_msaa_scale(targets.1);
+
+          frame_performance.start_frame(&quality);
+          frame_performance.process_event("frame_start");
+          frame_performance.process_event("pre_input");
 
           // prepare GUI and handle its actions
           let gui_action = gui.prepare(*quality.level.borrow());
@@ -663,14 +668,23 @@ fn main() {
             }
           }
 
-          update_camera(&mut fps_camera, &input_actions);
+          frame_performance.process_event("post_input");
 
+          frame_performance.process_event("pre_update_camera");
+          update_camera(&mut fps_camera, &input_actions);
+          frame_performance.process_event("post_update_camera");
+
+          frame_performance.process_event("pre_update_world");
           update_world(&display, &mut world, &mut gui, &input_actions);
+          frame_performance.process_event("pre_update_world");
 
           draw_frame(&quality, vr_mode, &stereo_mode, vr_display, &display, &window,
               &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
               &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
               &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record, show_bbox);
+
+          frame_performance.process_event("frame_end");
+          frame_performance.record_frame_log();
 
           // quit when demo is done
           if let Some(d) = demo.as_mut() {
