@@ -70,7 +70,6 @@ use glium::Depth;
 use glium::DepthTest;
 use glium::Display;
 use glium::DrawParameters;
-use glium::draw_parameters::BackfaceCullingMode;
 use glium::Rect;
 use glium::Surface;
 use glium::glutin::EventsLoop;

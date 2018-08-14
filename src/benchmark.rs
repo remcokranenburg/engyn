@@ -41,11 +41,6 @@ use math;
 use drawable::Drawable;
 use object::Object;
 
-fn normalize(x: Vec<f32>) -> Vec<f32> {
-  let sum: f32 = x.iter().sum();
-  x.iter().map(|e| e / sum).collect()
-}
-
 pub enum VisualizeMode {
   OneD,
   TwoD,
@@ -147,22 +142,6 @@ impl Benchmark {
       transform: Matrix4::identity(),
       size: 0.0,
     }
-  }
-
-  pub fn get_entries_by_normalized_weights(&self, weights: Vec<f32>) -> Vec<&BenchmarkEntry> {
-    let normalized_weights = normalize(weights);
-    let distance = 1.0 / self.num_samples_per_weight as f32;
-
-    let mut result = Vec::new();
-
-    for entry in &self.entries {
-      let mut pairs = entry.normalized_weights.iter().zip(normalized_weights.iter());
-      if pairs.all(|p| (p.0 - p.1).abs() < distance) {
-        result.push(entry.clone());
-      }
-    }
-
-    result
   }
 
   fn construct_1d_data(filename: &str) -> (Vec<Vertex>, Vec<Color>) {

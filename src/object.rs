@@ -31,7 +31,6 @@ use glium::VertexBuffer;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::f32;
-use std::path::MAIN_SEPARATOR;
 use std::path::Path;
 use std::rc::Rc;
 use tobj;
@@ -65,7 +64,7 @@ impl Object {
     let (objs, mtls) = tobj::load_obj(&obj_file).unwrap(); // TODO: propagate error
 
     for mtl in mtls {
-      let texture_filename = mtl.diffuse_texture;//.replace("\\", &MAIN_SEPARATOR.to_string());
+      let texture_filename = mtl.diffuse_texture;
       let texture_file = obj_path.join(&texture_filename);
       let albedo_map = resource_manager.get_texture(texture_file.to_str().unwrap()).unwrap();
 
