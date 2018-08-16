@@ -153,6 +153,20 @@ impl Object {
         }
       }
 
+      let material = if let Some(material_id) = obj.mesh.material_id {
+        Rc::clone(&materials[material_id])
+      } else {
+        Rc::new(RefCell::new(Material {
+          albedo_map: resource_manager.get_texture("data/empty.bmp").unwrap(),
+          ambient_color: [0.0, 0.0, 0.0],
+          diffuse_color: [0.0, 0.0, 0.0],
+          specular_color: [0.0, 0.0, 0.0],
+          shininess: 0.0,
+          metalness: 0.0,
+          reflectivity: 0.0,
+        }))
+      };
+
       objects.push(Object {
         children: Vec::new(),
         drawable: Some(Box::new(Mesh::new(
@@ -164,7 +178,7 @@ impl Object {
               vertices: vertices,
               texcoords: texcoords,
             })),
-            Rc::clone(&materials[obj.mesh.material_id.unwrap()]),
+            material,
             resource_manager))),
         transform: Matrix4::<f32>::identity(),
         size: size,

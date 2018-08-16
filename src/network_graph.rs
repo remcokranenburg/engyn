@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use cgmath::Matrix4;
+use cgmath::SquareMatrix;
 use glium::backend::Facade;
 use glium::DrawParameters;
 use glium::framebuffer::SimpleFrameBuffer;
@@ -37,6 +38,7 @@ use geometry::Vertex;
 use gui::Action;
 use light::Light;
 use math;
+use object::Object;
 
 pub struct Node {
   pub vertex: Vertex,
@@ -133,6 +135,15 @@ impl Network {
       many_bodies_strength: -0.005,
       many_bodies_distance_min2: 0.01,
       many_bodies_distance_max2: 1.0,
+    }
+  }
+
+  pub fn as_object(self) -> Object {
+    Object {
+      children: vec![],
+      drawable: Some(Box::new(self)),
+      transform: Matrix4::identity(),
+      size: 0.0,
     }
   }
 

@@ -21,8 +21,6 @@ use glium::index::IndexBuffer;
 use glium::index::PrimitiveType;
 use glium::vertex::VertexBuffer;
 use std::f32;
-use std::path::Path;
-use tobj;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -54,75 +52,6 @@ pub struct Geometry {
 }
 
 impl Geometry {
-  pub fn from_obj(context: &Facade, filename: &str) -> Geometry {
-    let (models, _) = tobj::load_obj(&Path::new(filename)).unwrap();
-
-    assert!(models.len() > 0);
-
-    let mesh = &models[0].mesh;
-
-    let indices = if mesh.indices.len() > 0 {
-      Some(IndexBuffer::new(context, PrimitiveType::TrianglesList, &mesh.indices).unwrap())
-    } else {
-      None
-    };
-
-    let mut normals = VertexBuffer::empty(context, mesh.normals.len()).unwrap();
-    {
-      let mut mapped = normals.map();
-      for i in 0..mesh.normals.len() / 3 {
-        mapped[i] = Normal { normal: (
-          mesh.normals[i * 3 + 0],
-          mesh.normals[i * 3 + 1],
-          mesh.normals[i * 3 + 2],
-        )};
-      }
-    }
-
-    let mut bounding_box = (
-      [f32::INFINITY; 3],
-      [f32::NEG_INFINITY; 3],
-    );
-
-    let mut vertices = VertexBuffer::empty(context, mesh.positions.len()).unwrap();
-    {
-      let mut mapped = vertices.map();
-      for i in 0..mesh.positions.len() / 3 {
-        mapped[i] = Vertex { position: (
-          mesh.positions[i * 3 + 0],
-          mesh.positions[i * 3 + 1],
-          mesh.positions[i * 3 + 2],
-        )};
-
-        for j in 0..bounding_box.0.len() {
-          bounding_box.0[j] = bounding_box.0[j].min(mesh.positions[i * 3 + j]);
-          bounding_box.1[j] = bounding_box.1[j].max(mesh.positions[i * 3 + j]);
-        }
-      }
-    }
-
-
-
-    let mut texcoords = VertexBuffer::empty(context, mesh.texcoords.len()).unwrap();
-    {
-      let mut mapped = texcoords.map();
-      for i in 0..mesh.texcoords.len() / 2 {
-        mapped[i] = Texcoord { texcoord: (
-          mesh.texcoords[i * 2 + 0],
-          mesh.texcoords[i * 2 + 1],
-        )};
-      }
-    }
-
-    Geometry {
-      bounding_box: bounding_box,
-      indices: indices,
-      normals: normals,
-      vertices: vertices,
-      texcoords: texcoords,
-    }
-  }
-
   pub fn new_quad(context: &Facade, size: [f32; 2], dynamic_texcoords: bool) -> Geometry {
     let width_half = size[0] * 0.5;
     let height_half = size[1] * 0.5;

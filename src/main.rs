@@ -16,19 +16,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-extern crate argparse;
-extern crate bincode;
-extern crate cgmath;
-extern crate chrono;
-#[macro_use] extern crate conrod;
-extern crate csv;
-#[macro_use] extern crate glium;
-extern crate image;
-extern crate itertools;
-extern crate rand;
-extern crate rust_webvr as webvr;
-#[macro_use] extern crate serde_derive;
-extern crate tobj;
+              extern crate argparse;
+              extern crate bincode;
+              extern crate cgmath;
+              extern crate chrono;
+#[macro_use]  extern crate conrod;
+              extern crate csv;
+#[macro_use]  extern crate glium;
+              extern crate image;
+              extern crate itertools;
+              extern crate rand;
+              extern crate rust_webvr as webvr;
+#[macro_use]  extern crate serde_derive;
+              extern crate serde_yaml;
+              extern crate tobj;
 
 mod adaptive_canvas;
 mod benchmark;
@@ -48,6 +49,7 @@ mod object;
 mod performance;
 mod quality;
 mod resources;
+mod scene;
 mod teapot;
 mod uniforms;
 
@@ -112,6 +114,7 @@ use object::Object;
 use performance::FramePerformance;
 use quality::Quality;
 use resources::ResourceManager;
+use scene::Scene;
 
 fn calculate_num_objects(objects: &Vec<Object>) -> u32 {
   objects.iter().fold(0, |acc, o| acc + 1 + calculate_num_objects(&o.children))
@@ -332,7 +335,8 @@ fn draw_frame(
 }
 
 fn main() {
-  let mut obj_filename = "".to_string();
+  let mut open_filename = "".to_string();
+  let mut save_filename = "".to_string();
   let mut perf_filename = "".to_string();
   let mut demo_filename = "".to_string();
   let mut demo_record = false;
@@ -346,8 +350,10 @@ fn main() {
     ap.set_description("Engyn: a configurable adaptive quality graphics engine.");
     ap.add_option(&["-V", "--version"],
         Print(env!("CARGO_PKG_VERSION").to_string()), "show version");
-    ap.refer(&mut obj_filename)
-      .add_option(&["-o", "--open"], Store, "open .obj file");
+    ap.refer(&mut open_filename)
+      .add_option(&["-o", "--open"], Store, "open scene from .yml file");
+    ap.refer(&mut save_filename)
+      .add_option(&["-s", "--save"], Store, "save scene to .yml file");
     ap.refer(&mut perf_filename)
       .add_option(&["-p", "--perf"], Store, "performance measurements");
     ap.refer(&mut visualize_perf)
@@ -361,10 +367,15 @@ fn main() {
     ap.refer(&mut weights)
       .add_option(&["--weights"], List, "quality weights");
     ap.refer(&mut enable_supersampling)
-      .add_option(&["-s", "--no-supersampling"], StoreFalse, "limit maximum resolution to monitor \
+      .add_option(&["--no-supersampling"], StoreFalse, "limit maximum resolution to monitor \
           resolution");
 
     ap.parse_args_or_exit();
+  }
+
+  if save_filename != "" {
+    let scene = Scene::new();
+    scene.to_yaml(&save_filename).unwrap();
   }
 
   let mut demo = if demo_record {
@@ -428,15 +439,6 @@ fn main() {
     metalness: 0.0,
     reflectivity: 0.0,
   }));
-  let terrain_material = Rc::new(RefCell::new(Material {
-    albedo_map: resource_manager.get_texture("data/terrain.png").unwrap(),
-    ambient_color: [0.0, 0.0, 0.0],
-    diffuse_color: [0.0, 0.0, 0.0],
-    specular_color: [0.0, 0.0, 0.0],
-    shininess: 0.0,
-    metalness: 0.0,
-    reflectivity: 0.0,
-  }));
 
   let canvas_dimensions = if enable_supersampling {
     (render_dimensions.0 * 4, render_dimensions.1 * 2)
@@ -450,24 +452,18 @@ fn main() {
 
   if visualize_perf && perf_filename != "" {
     world.push(Benchmark::from_file(&display, &perf_filename).as_object());
-  } else if obj_filename != "" {
-    world.push(Object::from_file(&display, &resource_manager, &obj_filename));
+  } else if open_filename != "" {
+    let scene = Scene::from_yaml(&open_filename).unwrap();
+    world.push(scene.as_object(&display, &resource_manager));
   } else {
     // a triangle
     world.push(Object::new_triangle(&display, &resource_manager, Rc::clone(&marble_material),
         [1.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
 
     // a terrain mesh
-    world.push(Object {
-      children: Vec::new(),
-      drawable: Some(Box::new(Mesh::new(
-          &display,
-          resource_manager.get_geometry("data/terrain.obj").unwrap(),
-          Rc::clone(&terrain_material),
-          &resource_manager))),
-      transform: Matrix4::<f32>::identity(),
-      size: f32::INFINITY,
-    });
+    let mut terrain = Object::from_file(&display, &resource_manager, "data/terrain.obj");
+    terrain.transform = Matrix4::identity();
+    world.push(terrain);
 
     // a teapot
 
@@ -592,16 +588,10 @@ fn main() {
 
   for _ in &gamepads {
     println!("We've found a gamepad!");
-    gamepad_models.push(Object {
-      children: Vec::new(),
-      drawable: Some(Box::new(Mesh::new(
-          &display,
-          resource_manager.get_geometry("data/vive-controller.obj").unwrap(),
-          Rc::clone(&marble_material),
-          &resource_manager))),
-      transform: Matrix4::<f32>::identity(),
-      size: f32::INFINITY,
-    });
+    let mut gamepad_model = Object::from_file(&display, &resource_manager,
+        "data/vive-controller.obj");
+    gamepad_model.transform = Matrix4::identity();
+    gamepad_models.push(Object::from_file(&display, &resource_manager, "data/vive-controller.obj"));
   }
 
   let mut input_handler = InputHandler::new(gamepads.len());

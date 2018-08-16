@@ -27,10 +27,7 @@ use std::error::Error;
 use std::path::Path;
 use std::rc::Rc;
 
-use geometry::Geometry;
-
 pub enum Resource {
-  Geometry(Rc<RefCell<Geometry>>),
   Program(Rc<RefCell<Program>>),
   SrgbTexture2d(Rc<RefCell<SrgbTexture2d>>),
 }
@@ -99,27 +96,6 @@ impl<'a> ResourceManager<'a> {
           eprintln!("Could not load texture: {}", path);
           Ok(Rc::new(RefCell::new(SrgbTexture2d::empty(self.context, 1, 1).unwrap())))
         }
-      }
-    }
-  }
-
-  pub fn get_geometry(&self, path: &str) -> Result<Rc<RefCell<Geometry>>, &str> {
-    println!("get_geometry: {}", path);
-
-    if self.resources.borrow().contains_key(path) {
-      match self.resources.borrow().get(path) {
-        Some(&Resource::Geometry(ref g)) => Ok(Rc::clone(g)),
-        Some(_) => Err("Not geometry"),
-        None => panic!(),
-      }
-    } else {
-      let geometry = Geometry::from_obj(self.context, path);
-      self.resources.borrow_mut().insert(
-          path.to_string(),
-          Resource::Geometry(Rc::new(RefCell::new(geometry))));
-      match self.resources.borrow().get(path) {
-        Some(&Resource::Geometry(ref gref)) => Ok(Rc::clone(gref)),
-        _ => panic!(),
       }
     }
   }
