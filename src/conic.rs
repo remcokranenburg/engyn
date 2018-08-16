@@ -135,9 +135,9 @@ impl Conic {
 }
 
 impl Drawable for Conic {
-  fn draw(&mut self, target: &mut SimpleFrameBuffer, context: &Facade, projection: [[f32; 4]; 4],
+  fn draw(&mut self, target: &mut SimpleFrameBuffer, _: &Facade, projection: [[f32; 4]; 4],
       view: [[f32; 4]; 4], model_transform: Matrix4<f32>, render_params: &DrawParameters, _: i32,
-      _: &[Light; 32], eye_i: usize, is_anaglyph: bool, show_bbox: bool) {
+      _: &[Light; 32], _: usize, _: bool, _: bool) {
     let uniforms = uniform! {
       projection: projection,
       view: view,
