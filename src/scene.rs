@@ -19,11 +19,13 @@
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use glium::backend::Facade;
+use math;
 use serde_yaml;
 use std::fs::File;
 use std::io::Result;
 
 use benchmark::Benchmark;
+use light::Light;
 use network_graph::Network;
 use object::Object;
 use resources::ResourceManager;
@@ -42,7 +44,7 @@ pub enum SceneDrawable {
 pub struct SceneObject {
   pub children: Vec<SceneObject>,
   pub drawable: SceneDrawable,
-  pub transform: Matrix4<f32>,
+  pub transform: [f32; 16],
 }
 
 impl SceneObject {
@@ -66,7 +68,7 @@ impl SceneObject {
       object.children.push(child.as_object(context, resource_manager));
     }
 
-    object.transform = self.transform;
+    object.transform = math::vec_to_matrix(&self.transform);
 
     object
   }
@@ -77,6 +79,7 @@ impl SceneObject {
 pub struct Scene {
   pub version: String,
   pub scene_objects: Vec<SceneObject>,
+  pub lights: Vec<Light>,
 }
 
 impl Scene {
@@ -89,18 +92,21 @@ impl Scene {
             SceneObject {
               children: vec![],
               drawable: SceneDrawable::Obj { path: "cube.obj".to_owned() },
-              transform: Matrix4::identity(),
+              transform: math::matrix_to_vec(&Matrix4::identity()),
             },
           ],
           drawable: SceneDrawable::None,
-          transform: Matrix4::identity(),
+          transform: math::matrix_to_vec(&Matrix4::identity()),
         },
         SceneObject {
           children: vec![],
           drawable: SceneDrawable::Network { num_nodes: 10, num_links: 10 },
-          transform: Matrix4::identity(),
+          transform: math::matrix_to_vec(&Matrix4::identity()),
         },
       ],
+      lights: vec![
+        Light { color: [1.0, 0.9, 0.9], position: [10.0, 10.0, 10.0] },
+      ]
     }
   }
 

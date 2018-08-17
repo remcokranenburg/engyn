@@ -27,6 +27,15 @@ pub fn vec_to_matrix(m: &[f32; 16]) -> Matrix4<f32> {
       m[12], m[13], m[14], m[15])
 }
 
+pub fn matrix_to_vec(m: &Matrix4<f32>) -> [f32; 16] {
+  [
+    m.x.x, m.x.y, m.x.z, m.x.w,
+    m.y.x, m.y.y, m.y.z, m.y.w,
+    m.z.x, m.z.y, m.z.z, m.z.w,
+    m.w.x, m.w.y, m.w.z, m.w.w,
+  ]
+}
+
 pub fn matrix_to_uniform(m: Matrix4<f32>) -> [[f32; 4]; 4] {
   *m.as_ref()
 }

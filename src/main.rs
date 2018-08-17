@@ -449,12 +449,22 @@ fn main() {
   let mut canvas = AdaptiveCanvas::new(&display, canvas_dimensions.0, canvas_dimensions.1, 3);
 
   let mut world = Vec::new();
+  let mut num_lights = 0;
+  let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
 
   if visualize_perf && perf_filename != "" {
     world.push(Benchmark::from_file(&display, &perf_filename).as_object());
   } else if open_filename != "" {
     let scene = Scene::from_yaml(&open_filename).unwrap();
     world.push(scene.as_object(&display, &resource_manager));
+
+    for (i, light) in scene.lights.iter().enumerate() {
+      if i < uniforms::MAX_NUM_LIGHTS {
+        lights[i] = *light;
+      }
+    }
+
+    num_lights = usize::min(scene.lights.len(), uniforms::MAX_NUM_LIGHTS) as i32;
   } else {
     // a triangle
     world.push(Object::new_triangle(&display, &resource_manager, Rc::clone(&marble_material),
@@ -546,6 +556,14 @@ fn main() {
     };
 
     world.push(my_network);
+
+    // add a light
+
+    num_lights = 1;
+    lights[0] = Light { color: [1.0, 0.9, 0.9], position: [10.0, 10.0, 10.0] };
+    // lights[1] = Light { color: [0.9, 1.0, 0.9], position: [10.0, 10.0, -10.0] };
+    // lights[2] = Light { color: [0.9, 0.9, 1.0], position: [-10.0, 10.0, -10.0] };
+    // lights[3] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
   }
 
   let num_objects = calculate_num_objects(&world);
@@ -561,15 +579,6 @@ fn main() {
         reflectivity: 0.0,
       })),
       [0.0001,0.0001], [-0.1, 0.1, 0.0], [0.0, 0.0, 0.0], [-1.0,1.0,1.0]);
-
-  // add a light
-
-  let num_lights = 1;
-  let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
-  lights[0] = Light { color: [1.0, 0.9, 0.9], position: [10.0, 10.0, 10.0] };
-  // lights[1] = Light { color: [0.9, 1.0, 0.9], position: [10.0, 10.0, -10.0] };
-  // lights[2] = Light { color: [0.9, 0.9, 1.0], position: [-10.0, 10.0, -10.0] };
-  // lights[3] = Light { color: [1.0, 1.0, 1.0], position: [-10.0, 10.0, 10.0] };
 
   let mut render_params = DrawParameters {
     depth: Depth { test: DepthTest::IfLess, write: true, .. Default::default() },
