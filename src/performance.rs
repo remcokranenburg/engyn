@@ -52,7 +52,7 @@ impl FramePerformance {
     FramePerformance {
       log: Vec::new(),
       event_instants: HashMap::new(),
-      current_fps_target: if vr_mode { 0 } else { 3 },
+      current_fps_target: if vr_mode { 0 } else { 1 },
       target_resolution: 0.0,
       target_msaa: 0.0,
       target_lod: 0.0,
@@ -83,29 +83,33 @@ impl FramePerformance {
     self.log.len()
   }
 
-  pub fn get_remaining_times(&self) -> Vec<u32> {
+  pub fn get_remaining_time(&self) -> u32 {
     let mut log_rev_iter = self.log.iter().rev();
-    let mut remaining_times = Vec::new();
 
-    for _ in 0 .. 1 {
-      if let Some(entry) = log_rev_iter.next() {
-        let frame_end = entry.event_instants.get("frame_end").unwrap();
-        let frame_start = entry.event_instants.get("frame_start").unwrap();
-        let non_idle_time = frame_end.duration_since(*frame_start).subsec_nanos();
-        let remaining_time = self.get_target_frame_time() as i32 - non_idle_time as i32;
-        remaining_times.push(cmp::max(0, remaining_time as u32));
-      }
-    }
+    let frame_duration = if self.log.len() >= 1 {
+      // we have a previous frame, so we can calculate based on events from last frame
+      let last_frame = log_rev_iter.next().unwrap();
+      let measure_start = last_frame.event_instants.get("post_sync_poses").unwrap();
+      let measure_end = last_frame.event_instants.get("post_draw").unwrap();
+      measure_end.duration_since(*measure_start).subsec_nanos()
+    } else {
+      // we have no previous frames, so we assume no frame duration
+      0u32
+    };
 
-    remaining_times
+    let remaining = cmp::max(0, self.get_target_frame_time() as i32 - frame_duration as i32) as u32;
+
+    // println!("target: {}, actual: {}, remaining: {}", self.get_target_frame_time(), frame_duration,
+    //     remaining);
+
+    remaining
   }
 
   pub fn get_predicted_remaining_time(&self) -> u32 {
-    let remaining_times = self.get_remaining_times();
-    let last_remaining_time = *remaining_times.first().unwrap_or(&0);
+    let remaining_time = self.get_remaining_time();
 
     // predict next remaining time
-    last_remaining_time
+    remaining_time
   }
 
   pub fn get_target_frame_time(&self) -> u32 {

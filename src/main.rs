@@ -323,6 +323,8 @@ fn draw_frame(
     canvas.get_resolved_framebuffer(display).unwrap()
       .blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
 
+    frame_performance.process_event("post_draw");
+
     target.finish().unwrap();
   }
 
@@ -332,7 +334,6 @@ fn draw_frame(
   //   display.finish();
   // }
 
-  frame_performance.process_event("post_draw");
 }
 
 fn main() {
