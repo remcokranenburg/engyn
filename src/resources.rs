@@ -25,6 +25,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub enum Resource {
@@ -34,7 +35,7 @@ pub enum Resource {
 
 pub struct ResourceManager<'a> {
   context: &'a Facade,
-  resources: RefCell<HashMap<String, Resource>>,
+  resources: RefCell<HashMap<PathBuf, Resource>>,
 }
 
 impl<'a> ResourceManager<'a> {
@@ -49,9 +50,9 @@ impl<'a> ResourceManager<'a> {
    * Retrieves a program from the ResourceManager
    */
 
-  pub fn get_program(&self, path: &str, compile: &Fn() -> Program)
+  pub fn get_program(&self, path: &Path, compile: &Fn() -> Program)
       -> Result<Rc<RefCell<Program>>, &str> {
-    println!("get_program: {}", path);
+    println!("get_program: {}", path.to_str().unwrap_or(""));
     if self.resources.borrow().contains_key(path) {
       match self.resources.borrow().get(path) {
         Some(&Resource::Program(ref p)) => Ok(Rc::clone(p)),
@@ -59,7 +60,8 @@ impl<'a> ResourceManager<'a> {
         None => panic!(),
       }
     } else {
-      self.resources.borrow_mut().insert(path.to_string(), Resource::Program(Rc::new(RefCell::new(compile()))));
+      self.resources.borrow_mut().insert(path.to_path_buf(),
+          Resource::Program(Rc::new(RefCell::new(compile()))));
       match self.resources.borrow().get(path) {
         Some(&Resource::Program(ref p)) => Ok(Rc::clone(p)),
         _ => panic!()
@@ -71,8 +73,8 @@ impl<'a> ResourceManager<'a> {
    * Retrieves a texture from the ResourceManager.
    */
 
-  pub fn get_texture(&self, path: &str) -> Result<Rc<RefCell<SrgbTexture2d>>, &str> {
-    println!("get_texture: {}", path);
+  pub fn get_texture(&self, path: &Path) -> Result<Rc<RefCell<SrgbTexture2d>>, &str> {
+    println!("get_texture: {}", path.to_str().unwrap_or(""));
     if self.resources.borrow().contains_key(path) {
       match self.resources.borrow().get(path) {
         Some(&Resource::SrgbTexture2d(ref t)) => Ok(Rc::clone(t)),
@@ -85,7 +87,7 @@ impl<'a> ResourceManager<'a> {
       match texture {
         Ok(t) => {
           self.resources.borrow_mut().insert(
-              path.to_string(),
+              path.to_path_buf(),
               Resource::SrgbTexture2d(Rc::new(RefCell::new(t))));
           match self.resources.borrow().get(path) {
             Some(&Resource::SrgbTexture2d(ref tref)) => Ok(Rc::clone(tref)),
@@ -93,7 +95,7 @@ impl<'a> ResourceManager<'a> {
           }
         },
         _ => {
-          eprintln!("Could not load texture: {}", path);
+          eprintln!("Could not load texture: {}", path.to_str().unwrap_or(""));
           Ok(Rc::new(RefCell::new(SrgbTexture2d::empty(self.context, 1, 1).unwrap())))
         }
       }

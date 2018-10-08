@@ -53,20 +53,19 @@ pub struct Object {
 }
 
 impl Object {
-  pub fn from_file<F>(context: &F, resource_manager: &ResourceManager, filename: &str) -> Object
+  pub fn from_file<F>(context: &F, resource_manager: &ResourceManager, path: &Path) -> Object
       where F: Facade {
     let mut objects = Vec::new();
     let mut materials = Vec::new();
 
-    let obj_file = Path::new(filename);
-    let obj_path = obj_file.parent().unwrap();
+    let obj_dir = path.parent().unwrap();
 
-    let (objs, mtls) = tobj::load_obj(&obj_file).unwrap(); // TODO: propagate error
+    let (objs, mtls) = tobj::load_obj(path).unwrap(); // TODO: propagate error
 
     for mtl in mtls {
       let texture_filename = mtl.diffuse_texture;
-      let texture_file = obj_path.join(&texture_filename);
-      let albedo_map = resource_manager.get_texture(texture_file.to_str().unwrap()).unwrap();
+      let texture_file = obj_dir.join(&texture_filename);
+      let albedo_map = resource_manager.get_texture(&texture_file).unwrap();
 
       materials.push(Rc::new(RefCell::new(Material {
         albedo_map: Rc::clone(&albedo_map),
@@ -157,7 +156,7 @@ impl Object {
         Rc::clone(&materials[material_id])
       } else {
         Rc::new(RefCell::new(Material {
-          albedo_map: resource_manager.get_texture("data/empty.bmp").unwrap(),
+          albedo_map: resource_manager.get_texture(&Path::new("data/empty.bmp")).unwrap(),
           ambient_color: [0.0, 0.0, 0.0],
           diffuse_color: [0.0, 0.0, 0.0],
           specular_color: [0.0, 0.0, 0.0],

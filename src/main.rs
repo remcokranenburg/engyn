@@ -89,6 +89,7 @@ use std::cell::RefCell;
 use std::f32;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::Path;
 use std::rc::Rc;
 use webvr::VRDisplayPtr;
 use webvr::VRFramebufferAttributes;
@@ -431,7 +432,7 @@ fn main() {
   }
 
   let marble_material = Rc::new(RefCell::new(Material {
-    albedo_map: resource_manager.get_texture("data/marble.jpg").unwrap(),
+    albedo_map: resource_manager.get_texture(&Path::new("data/marble.jpg")).unwrap(),
     ambient_color: [0.0, 0.0, 0.0],
     diffuse_color: [0.0, 0.0, 0.0],
     specular_color: [1.0, 1.0, 1.0],
@@ -453,7 +454,7 @@ fn main() {
   let mut lights: [Light; uniforms::MAX_NUM_LIGHTS] = Default::default();
 
   if visualize_perf && perf_filename != "" {
-    world.push(Benchmark::from_file(&display, &perf_filename).as_object());
+    world.push(Benchmark::from_file(&display, &Path::new(&perf_filename)).as_object());
   } else if open_filename != "" {
     let scene = Scene::from_yaml(&open_filename).unwrap();
     world.push(scene.as_object(&display, &resource_manager));
@@ -471,7 +472,8 @@ fn main() {
         [1.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]));
 
     // a terrain mesh
-    let mut terrain = Object::from_file(&display, &resource_manager, "data/terrain.obj");
+    let mut terrain = Object::from_file(&display, &resource_manager,
+        &Path::new("data/terrain.obj"));
     terrain.transform = Matrix4::identity();
     world.push(terrain);
 
@@ -570,7 +572,7 @@ fn main() {
 
   // empty texture to force glutin clean
   let mut empty = Object::new_plane(&display, &resource_manager, Rc::new(RefCell::new(Material {
-        albedo_map: resource_manager.get_texture("data/empty.bmp").unwrap(),
+        albedo_map: resource_manager.get_texture(&Path::new("data/empty.bmp")).unwrap(),
         ambient_color: [0.0, 0.0, 0.0],
         diffuse_color: [0.0, 0.0, 0.0],
         specular_color: [0.0, 0.0, 0.0],
@@ -597,10 +599,9 @@ fn main() {
 
   for _ in &gamepads {
     println!("We've found a gamepad!");
-    let mut gamepad_model = Object::from_file(&display, &resource_manager,
-        "data/vive-controller.obj");
-    gamepad_model.transform = Matrix4::identity();
-    gamepad_models.push(Object::from_file(&display, &resource_manager, "data/vive-controller.obj"));
+    let gamepad_model_path = Path::new("data/vive-controller.obj");
+    let gamepad_model = Object::from_file(&display, &resource_manager, &gamepad_model_path);
+    gamepad_models.push(gamepad_model);
   }
 
   let mut input_handler = InputHandler::new(gamepads.len());

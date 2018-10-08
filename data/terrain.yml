@@ -5,7 +5,7 @@ sceneObjects:
       - children: []
         drawable:
           obj:
-            path: data/terrain.obj
+            path: terrain.obj
         transform: [
           1.0, 0.0, 0.0, 0.0,
           0.0, 1.0, 0.0, 0.0,

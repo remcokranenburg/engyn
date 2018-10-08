@@ -30,9 +30,10 @@ use glium::Surface;
 use glium::vertex::BufferCreationError;
 use glium::VertexBuffer;
 use std::collections::HashMap;
-use std::mem;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::mem;
+use std::path::Path;
 
 use geometry::Vertex;
 use gui::Action;
@@ -113,11 +114,11 @@ struct Key2d(HashableF32, HashableF32);
 struct Key3d(HashableF32, HashableF32, HashableF32);
 
 impl Benchmark {
-  pub fn from_file<F>(context: &F, filename: &str) -> Benchmark
+  pub fn from_file<F>(context: &F, path: &Path) -> Benchmark
       where F: Facade {
-    let (vertices_1d, colors_1d) = Benchmark::construct_1d_data(filename);
-    let (vertices_2d, colors_2d) = Benchmark::construct_2d_data(filename);
-    let (vertices_3d, colors_3d) = Benchmark::construct_3d_data(filename);
+    let (vertices_1d, colors_1d) = Benchmark::construct_1d_data(path);
+    let (vertices_2d, colors_2d) = Benchmark::construct_2d_data(path);
+    let (vertices_3d, colors_3d) = Benchmark::construct_3d_data(path);
 
     Benchmark {
       entries: Vec::new(),
@@ -144,14 +145,14 @@ impl Benchmark {
     }
   }
 
-  fn construct_1d_data(filename: &str) -> (Vec<Vertex>, Vec<Color>) {
+  fn construct_1d_data(path: &Path) -> (Vec<Vertex>, Vec<Color>) {
     let scale_factor = 1.0 / 64_000_000f32;
 
     let mut data = HashMap::new();
     let mut vertices = Vec::new();
     let mut colors = Vec::new();
 
-    let mut reader = Reader::from_path(filename).unwrap();
+    let mut reader = Reader::from_path(path).unwrap();
 
     for result in reader.records() {
       match result {
@@ -183,14 +184,14 @@ impl Benchmark {
     (vertices, colors)
   }
 
-  fn construct_2d_data(filename: &str) -> (Vec<Vertex>, Vec<Color>) {
+  fn construct_2d_data(path: &Path) -> (Vec<Vertex>, Vec<Color>) {
     let scale_factor = 1.0 / 64_000_000f32;
 
     let mut data = HashMap::new();
     let mut vertices = Vec::new();
     let mut colors = Vec::new();
 
-    let mut reader = Reader::from_path(filename).unwrap();
+    let mut reader = Reader::from_path(path).unwrap();
 
     for result in reader.records() {
       match result {
@@ -226,14 +227,14 @@ impl Benchmark {
     (vertices, colors)
   }
 
-  fn construct_3d_data(filename: &str) -> (Vec<Vertex>, Vec<Color>) {
+  fn construct_3d_data(path: &Path) -> (Vec<Vertex>, Vec<Color>) {
     let scale_factor = 1.0 / 64_000_000f32;
 
     let mut data = HashMap::new();
     let mut vertices = Vec::new();
     let mut colors = Vec::new();
 
-    let mut reader = Reader::from_path(filename).unwrap();
+    let mut reader = Reader::from_path(path).unwrap();
 
     for result in reader.records() {
       match result {

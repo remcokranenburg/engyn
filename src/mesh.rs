@@ -28,6 +28,7 @@ use glium::index::PrimitiveType;
 use glium::Surface;
 use glium::VertexBuffer;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
 use drawable::Drawable;
@@ -52,11 +53,11 @@ impl Mesh {
   pub fn new<F>(display: &F, geometry: Rc<RefCell<Geometry>>, material: Rc<RefCell<Material>>,
       resource_manager: &ResourceManager) -> Mesh
       where F: Facade {
-    let program = resource_manager.get_program("programs/mesh_program", &|| {
+    let program = resource_manager.get_program(&Path::new("programs/mesh_program"), &|| {
       construct_program(display)
     }).unwrap();
 
-    let bbox_program = resource_manager.get_program("programs/mesh_bbox_program", &|| {
+    let bbox_program = resource_manager.get_program(&Path::new("programs/mesh_bbox_program"), &|| {
       construct_bbox_program(display)
     }).unwrap();
 

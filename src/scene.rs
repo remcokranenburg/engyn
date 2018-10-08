@@ -23,6 +23,8 @@ use math;
 use serde_yaml;
 use std::fs::File;
 use std::io::Result;
+use std::path::Path;
+use std::path::PathBuf;
 
 use benchmark::Benchmark;
 use light::Light;
@@ -48,11 +50,15 @@ pub struct SceneObject {
 }
 
 impl SceneObject {
-  pub fn as_object<F>(&self, context: &F, resource_manager: &ResourceManager) -> Object
-      where F: Facade {
+  pub fn as_object<F>(&self, context: &F, resource_manager: &ResourceManager, base_path: &Path)
+      -> Object where F: Facade {
     let mut object = match &self.drawable {
-      &SceneDrawable::Benchmark { ref path } => Benchmark::from_file(context, &path).as_object(),
-      &SceneDrawable::Obj { ref path } => Object::from_file(context, resource_manager, &path),
+      &SceneDrawable::Benchmark { ref path } => {
+        Benchmark::from_file(context, &base_path.join(path)).as_object()
+      },
+      &SceneDrawable::Obj { ref path } => {
+        Object::from_file(context, resource_manager, &base_path.join(path))
+      },
       &SceneDrawable::Network { num_nodes, num_links } => {
         Network::new(context, num_nodes, num_links).as_object()
       },
@@ -65,7 +71,7 @@ impl SceneObject {
     };
 
     for child in &self.children {
-      object.children.push(child.as_object(context, resource_manager));
+      object.children.push(child.as_object(context, resource_manager, base_path));
     }
 
     object.transform = math::vec_to_matrix(&self.transform);
@@ -80,6 +86,7 @@ pub struct Scene {
   pub version: String,
   pub scene_objects: Vec<SceneObject>,
   pub lights: Vec<Light>,
+  #[serde(skip)] base_path: PathBuf,
 }
 
 impl Scene {
@@ -106,13 +113,17 @@ impl Scene {
       ],
       lights: vec![
         Light { color: [1.0, 0.9, 0.9], position: [10.0, 10.0, 10.0] },
-      ]
+      ],
+      base_path: PathBuf::new(),
     }
   }
 
   pub fn from_yaml(filename: &str) -> Result<Scene> {
-    let file = File::open(filename)?;
-    let scene: Scene = serde_yaml::from_reader(&file).unwrap();
+    let path = Path::new(filename);
+    let file = File::open(&path)?;
+    let base = path.parent().unwrap();
+    let mut scene: Scene = serde_yaml::from_reader(&file).unwrap();
+    scene.base_path = base.to_path_buf();
     Ok(scene)
   }
 
@@ -127,7 +138,7 @@ impl Scene {
     let mut objects = vec![];
 
     for scene_object in &self.scene_objects {
-      objects.push(scene_object.as_object(context, resource_manager));
+      objects.push(scene_object.as_object(context, resource_manager, &self.base_path));
     }
 
     Object {
