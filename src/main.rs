@@ -85,6 +85,9 @@ use glium::index::PrimitiveType;
 use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
 use itertools::Itertools;
+use rand::prng::hc128::Hc128Rng;
+use rand::SeedableRng;
+use rand::Rng;
 use std::cell::RefCell;
 use std::f32;
 use std::fs::File;
@@ -381,9 +384,12 @@ fn main() {
   }
 
   let mut demo = if demo_record {
+    println!("Recording demo {}", demo_filename);
     Some(Demo::new())
   } else if demo_filename != "" {
-    Some(Demo::from_bincode(&demo_filename).unwrap())
+    let demo = Demo::from_bincode(&demo_filename).unwrap();
+    println!("Playing back demo {} ({} frames)", demo_filename, demo.entries.len());
+    Some(demo)
   } else {
     None
   };
@@ -606,13 +612,16 @@ fn main() {
   }
 
   let mut input_handler = InputHandler::new(gamepads.len());
-  let mut quality = Quality::new(weights);
+  let mut quality = Quality::new(if weights.len() >= 3 {
+    (weights[0], weights[1], weights[2])
+  } else {
+    (0.5, 0.1, 1.0)
+  });
   let mut gui = Gui::new(&display, Rc::clone(&quality.weight_resolution),
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);
 
-  let num_iterations = 21u32;
-  let range = if benchmarking { 0u32 .. num_iterations } else { 0u32 .. 1u32 };
+  let num_iterations = 50;
   let target_steps = 1.0 / (num_iterations - 1) as f32;
 
   let mut stereo_mode = StereoMode::StereoCross;
@@ -626,73 +635,107 @@ fn main() {
     }));
   }
 
-  for target_resolution in range.clone() {
-    for target_msaa in range.clone() {
-      for target_lod in range.clone() {
-        if benchmarking {
-          quality.set_target_levels((
-            target_resolution as f32 * target_steps,
-            target_msaa as f32 * target_steps,
-            target_lod as f32 * target_steps,
-          ));
+  let configurations = if benchmarking {
+    let mut c = Vec::new();
+    let seed = [
+        4, 8, 15, 16, 23, 42,
+        4, 8, 15, 16, 23, 42,
+        4, 8, 15, 16, 23, 42,
+        4, 8, 15, 16, 23, 42,
+        4, 8, 15, 16, 23, 42,
+        4, 8,
+    ];
+    let mut rng = Hc128Rng::from_seed(seed);
+
+    for _ in 0..num_iterations {
+      let mut configuration = rng.gen::<(f32, f32, f32)>();
+      if weights.len() >= 3 {
+        if weights[0] >= 0.0 && weights[0] <= 1.0 {
+          configuration.0 = weights[0];
         }
 
-        'main: loop {
-          quality.set_level(&frame_performance);
-          let targets = quality.get_target_levels();
-          canvas.set_resolution_scale(targets.0);
-          canvas.set_msaa_scale(targets.1);
+        if weights[1] >= 0.0 && weights[1] <= 1.0 {
+          configuration.1 = weights[1];
+        }
 
-          frame_performance.start_frame(&quality);
-          frame_performance.process_event("frame_start");
-          frame_performance.process_event("pre_input");
+        if weights[2] >= 0.0 && weights[2] <= 1.0 {
+          configuration.2 = weights[2];
+        }
+      }
+      c.push(configuration);
+    }
 
-          // prepare GUI and handle its actions
-          let gui_action = gui.prepare(*quality.level.borrow());
+    c
+  } else {
+    vec![(0.0, 0.0, 0.0)]
+  };
 
-          // get input and handle its actions
-          let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
-              vr_mode, &mut events_loop, &mut gui);
+  println!("Configurations:");
+  for c in &configurations {
+    println!("{} {} {}", c.0, c.1, c.2);
+  }
 
-          for action in &input_actions {
-            match action {
-              &Action::Quit => break 'main,
-              &Action::StereoNone => stereo_mode = StereoMode::StereoNone,
-              &Action::StereoCross => stereo_mode = StereoMode::StereoCross,
-              &Action::StereoAnaglyph => stereo_mode = StereoMode::StereoAnaglyph,
-              &Action::ToggleBoundingBox => show_bbox = !show_bbox,
-              _ => (),
-            }
+  for c in &configurations {
+    frame_performance.reset_frame_count();
 
-            if let &Action::Quit = action {
-              break 'main
-            }
-          }
+    if benchmarking {
+      quality = Quality::new(*c);
+    }
 
-          frame_performance.process_event("post_input");
+    'main: loop {
+      quality.set_level(&frame_performance);
+      let targets = quality.get_target_levels();
+      canvas.set_resolution_scale(targets.0);
+      canvas.set_msaa_scale(targets.1);
 
-          frame_performance.process_event("pre_update_camera");
-          update_camera(&mut fps_camera, &input_actions);
-          frame_performance.process_event("post_update_camera");
+      frame_performance.start_frame(&quality);
+      frame_performance.process_event("frame_start");
+      frame_performance.process_event("pre_input");
 
-          frame_performance.process_event("pre_update_world");
-          update_world(&display, &mut world, &mut gui, &input_actions);
-          frame_performance.process_event("pre_update_world");
+      // prepare GUI and handle its actions
+      let gui_action = gui.prepare(*quality.level.borrow());
 
-          draw_frame(&quality, vr_mode, &stereo_mode, vr_display, &display, &window,
-              &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
-              &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
-              &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record, show_bbox);
+      // get input and handle its actions
+      let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
+          vr_mode, &mut events_loop, &mut gui);
 
-          frame_performance.process_event("frame_end");
-          frame_performance.record_frame_log();
+      for action in &input_actions {
+        match action {
+          &Action::Quit => break 'main,
+          &Action::StereoNone => stereo_mode = StereoMode::StereoNone,
+          &Action::StereoCross => stereo_mode = StereoMode::StereoCross,
+          &Action::StereoAnaglyph => stereo_mode = StereoMode::StereoAnaglyph,
+          &Action::ToggleBoundingBox => show_bbox = !show_bbox,
+          _ => (),
+        }
 
-          // quit when demo is done
-          if let Some(d) = demo.as_mut() {
-            if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
-              break 'main;
-            }
-          }
+        if let &Action::Quit = action {
+          break 'main
+        }
+      }
+
+      frame_performance.process_event("post_input");
+
+      frame_performance.process_event("pre_update_camera");
+      update_camera(&mut fps_camera, &input_actions);
+      frame_performance.process_event("post_update_camera");
+
+      frame_performance.process_event("pre_update_world");
+      update_world(&display, &mut world, &mut gui, &input_actions);
+      frame_performance.process_event("post_update_world");
+
+      draw_frame(&quality, vr_mode, &stereo_mode, vr_display, &display, &window,
+          &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
+          &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
+          &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record, show_bbox);
+
+      frame_performance.process_event("frame_end");
+      frame_performance.record_frame_log();
+
+      // quit when demo is done
+      if let Some(d) = demo.as_mut() {
+        if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
+          break 'main;
         }
       }
     }
@@ -722,7 +765,11 @@ fn main() {
         let step_size = d.entries.len() / demo_length as usize;
 
         for entry in d.entries.iter().step(step_size) {
-          new_demo.entries.push(entry.clone());
+          if new_demo.entries.len() < 180 {
+            new_demo.entries.push(entry.clone());
+          } else {
+            break;
+          }
         }
 
         new_demo.to_bincode(&filename).unwrap();

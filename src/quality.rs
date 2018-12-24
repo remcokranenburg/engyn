@@ -30,20 +30,8 @@ pub struct Quality {
 }
 
 impl Quality {
-  pub fn new(weights: Vec<f32>) -> Quality {
-    let (
-      weight_resolution,
-      weight_msaa,
-      weight_lod,
-    ) = if weights.len() == 3 { (
-      weights[0],
-      weights[1],
-      weights[2],
-    ) } else { (
-      0.50,
-      0.01,
-      1.00,
-    ) };
+  pub fn new(weights: (f32, f32, f32)) -> Quality {
+    let (weight_resolution, weight_msaa, weight_lod) = weights;
 
     Quality {
       adaptive_quality: true,
@@ -61,19 +49,30 @@ impl Quality {
 
     // println!("target: {}, remaining: {}, ratio: {}", target_frame_time, predicted_remaining_time, ratio_remaining);
 
+    const EMERGENCY_ZONE: f32 = 0.05;
+    const DANGER_ZONE: f32 = 0.1;
+    const SAFE_ZONE: f32 = 0.3;
+    const EASY_ZONE: f32 = 0.8;
+
     let original_level = *self.level.borrow();
 
-    if ratio_remaining < 0.1 {
+    if ratio_remaining < EMERGENCY_ZONE {
       *self.level.borrow_mut() = f32::max(original_level * 0.5, 0.0001);
-    } else if ratio_remaining < 0.2 {
+    } else if ratio_remaining < DANGER_ZONE {
        *self.level.borrow_mut() = f32::max(original_level * 0.99, 0.0001);
-    } else if ratio_remaining < 0.3 {
-      // between 0.2 and 0.3, do nothing
-    } else if ratio_remaining > 0.9 {
-      *self.level.borrow_mut() = f32::min(original_level * 2.0, 1.0);
-    } else {
+    } else if ratio_remaining < SAFE_ZONE {
+      // in safe zone, do nothing
+    } else if ratio_remaining < EASY_ZONE {
       *self.level.borrow_mut() = f32::min(original_level * 1.01, 1.0);
+    } else {
+      *self.level.borrow_mut() = f32::min(original_level * 2.0, 1.0);
     }
+  }
+
+  pub fn set_weights(&mut self, values: (f32, f32, f32)) {
+    *self.weight_resolution.borrow_mut() = values.0;
+    *self.weight_msaa.borrow_mut() = values.1;
+    *self.weight_lod.borrow_mut() = values.2;
   }
 
   pub fn set_target_levels(&mut self, values: (f32, f32, f32)) {

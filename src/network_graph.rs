@@ -28,8 +28,6 @@ use glium::Program;
 use glium::Surface;
 use glium::VertexBuffer;
 use rand;
-use rand::distributions::IndependentSample;
-use rand::distributions::Range;
 use rand::Rng;
 use std::f32;
 
@@ -190,7 +188,7 @@ impl Network {
 
   fn jiggle() -> f32 {
     let mut rng = rand::thread_rng();
-    (rng.next_f32() - 0.5) * 1e-6
+    (rng.gen::<f32>() - 0.5) * 1e-6
   }
 
   fn initialize_nodes(nodes: &mut Vec<Node>, num_nodes: usize) {
@@ -205,11 +203,10 @@ impl Network {
 
   fn initialize_links(links: &mut Vec<(usize, usize)>, num_nodes: usize, num_links: usize) {
     let mut rng = rand::thread_rng();
-    let link_range = Range::new(0, num_nodes);
 
     while links.len() < num_links {
-      let src_index = link_range.ind_sample(&mut rng);
-      let dst_index = link_range.ind_sample(&mut rng);
+      let src_index = rng.gen_range(0, num_nodes);
+      let dst_index = rng.gen_range(0, num_nodes);
       links.push((src_index, dst_index));
     }
   }
