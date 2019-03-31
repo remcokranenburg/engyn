@@ -145,7 +145,7 @@ enum StereoMode {
 }
 
 fn draw_frame(
-    quality: &Quality,
+    target_lod: f32,
     vr_mode: bool,
     stereo_mode: &StereoMode,
     vr_display: Option<&VRDisplayPtr>,
@@ -269,7 +269,6 @@ fn draw_frame(
       render_params.viewport = Some(viewport);
 
       let mut i = 0;
-      let target_lod = quality.get_target_levels().2;
       for object in world.iter_mut() {
         if target_lod > (i as f32 / num_objects as f32) {
           i = object.draw(target_lod, i, num_objects, &mut framebuffer, display, projection, view, &render_params, num_lights, lights, eye_i, is_anaglyph, show_bbox);
@@ -348,7 +347,9 @@ fn main() {
   let mut demo_length = -1i32;
   let mut weights = Vec::<f32>::new();
   let mut enable_supersampling = true;
+  let mut baseline = false;
   let mut visualize_perf = false;
+  let mut num_samples = 10;
 
   {
     let mut ap = ArgumentParser::new();
@@ -361,6 +362,8 @@ fn main() {
       .add_option(&["-s", "--save"], Store, "save scene to .yml file");
     ap.refer(&mut perf_filename)
       .add_option(&["-p", "--perf"], Store, "performance measurements");
+    ap.refer(&mut baseline)
+      .add_option(&["--baseline"], StoreTrue, "get baseline measurements");
     ap.refer(&mut visualize_perf)
       .add_option(&["--visualize", "--vis"], StoreTrue, "visualize performance measurements");
     ap.refer(&mut demo_filename)
@@ -374,6 +377,8 @@ fn main() {
     ap.refer(&mut enable_supersampling)
       .add_option(&["--no-supersampling"], StoreFalse, "limit maximum resolution to monitor \
           resolution");
+    ap.refer(&mut num_samples)
+      .add_option(&["--samples"], Store, "number of samples to record for each frame");
 
     ap.parse_args_or_exit();
   }
@@ -621,8 +626,7 @@ fn main() {
       Rc::clone(&quality.weight_msaa), Rc::clone(&quality.weight_lod));
   let mut frame_performance = FramePerformance::new(vr_mode);
 
-  let num_iterations = 50;
-  let target_steps = 1.0 / (num_iterations - 1) as f32;
+  let num_configurations = 50;
 
   let mut stereo_mode = StereoMode::StereoCross;
   let mut show_bbox = false;
@@ -647,9 +651,10 @@ fn main() {
     ];
     let mut rng = Hc128Rng::from_seed(seed);
 
-    for _ in 0..num_iterations {
-      let mut configuration = rng.gen::<(f32, f32, f32)>();
+    for _ in 0..num_configurations {
       if weights.len() >= 3 {
+        // if we set some fixed weights on the command line, we want to benchmark using those
+        let mut configuration = rng.gen::<(f32, f32, f32)>();
         if weights[0] >= 0.0 && weights[0] <= 1.0 {
           configuration.0 = weights[0];
         }
@@ -661,85 +666,104 @@ fn main() {
         if weights[2] >= 0.0 && weights[2] <= 1.0 {
           configuration.2 = weights[2];
         }
+
+        c.push(("custom", configuration));
+      } else {
+        // we use a random weight 3 times, once for each feature
+        let random_weight = rng.gen::<f32>();
+        let other_weight = (1.0 - random_weight) / 2.0;
+        let mut configurations = vec![
+          ("resolution", (random_weight, other_weight, other_weight)),
+          ("msaa", (other_weight, random_weight, other_weight)),
+          ("lod", (other_weight, other_weight, random_weight)),
+        ];
+        c.append(&mut configurations);
       }
-      c.push(configuration);
     }
 
     c
   } else {
-    vec![(0.0, 0.0, 0.0)]
+    vec![("none", (0.0, 0.0, 0.0))]
   };
 
   println!("Configurations:");
   for c in &configurations {
-    println!("{} {} {}", c.0, c.1, c.2);
+    println!("{} {} {} {}", c.0, (c.1).0, (c.1).1, (c.1).2);
   }
 
   for c in &configurations {
-    frame_performance.reset_frame_count();
+    for sample_number in 0..num_samples {
+      frame_performance.reset_frame_count();
 
-    if benchmarking {
-      quality = Quality::new(*c);
-    }
-
-    'main: loop {
-      quality.set_level(&frame_performance);
-      let targets = quality.get_target_levels();
-      canvas.set_resolution_scale(targets.0);
-      canvas.set_msaa_scale(targets.1);
-
-      frame_performance.start_frame(&quality);
-      frame_performance.process_event("frame_start");
-      frame_performance.process_event("pre_input");
-
-      // prepare GUI and handle its actions
-      let gui_action = gui.prepare(*quality.level.borrow());
-
-      // get input and handle its actions
-      let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
-          vr_mode, &mut events_loop, &mut gui);
-
-      for action in &input_actions {
-        match action {
-          &Action::Quit => break 'main,
-          &Action::StereoNone => stereo_mode = StereoMode::StereoNone,
-          &Action::StereoCross => stereo_mode = StereoMode::StereoCross,
-          &Action::StereoAnaglyph => stereo_mode = StereoMode::StereoAnaglyph,
-          &Action::ToggleBoundingBox => show_bbox = !show_bbox,
-          _ => (),
-        }
-
-        if let &Action::Quit = action {
-          break 'main
-        }
+      if benchmarking {
+        quality = Quality::new((*c).1);
       }
 
-      frame_performance.process_event("post_input");
+      'main: loop {
+        let (target_resolution, target_msaa, target_lod) = if baseline {
+          ((c.1).0, (c.1).1, (c.1).2)
+        } else {
+          quality.set_level(&frame_performance);
+          let targets = quality.get_target_levels();
+          (targets.0, targets.1, targets.2)
+        };
 
-      frame_performance.process_event("pre_update_camera");
-      update_camera(&mut fps_camera, &input_actions);
-      frame_performance.process_event("post_update_camera");
+        canvas.set_resolution_scale(target_resolution);
+        canvas.set_msaa_scale(target_msaa);
 
-      frame_performance.process_event("pre_update_world");
-      update_world(&display, &mut world, &mut gui, &input_actions);
-      frame_performance.process_event("post_update_world");
+        frame_performance.start_frame(&quality);
+        frame_performance.process_event("frame_start");
+        frame_performance.process_event("pre_input");
 
-      draw_frame(&quality, vr_mode, &stereo_mode, vr_display, &display, &window,
-          &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
-          &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
-          &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record, show_bbox);
+        // prepare GUI and handle its actions
+        let gui_action = gui.prepare(*quality.level.borrow());
 
-      frame_performance.process_event("frame_end");
-      frame_performance.record_frame_log();
+        // get input and handle its actions
+        let input_actions = input_handler.process(&gui_action, &gamepads, &mut vr, &display, &window,
+            vr_mode, &mut events_loop, &mut gui);
 
-      // quit when demo is done
-      if let Some(d) = demo.as_mut() {
-        if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
-          break 'main;
+        for action in &input_actions {
+          match action {
+            &Action::Quit => break 'main,
+            &Action::StereoNone => stereo_mode = StereoMode::StereoNone,
+            &Action::StereoCross => stereo_mode = StereoMode::StereoCross,
+            &Action::StereoAnaglyph => stereo_mode = StereoMode::StereoAnaglyph,
+            &Action::ToggleBoundingBox => show_bbox = !show_bbox,
+            _ => (),
+          }
+
+          if let &Action::Quit = action {
+            break 'main
+          }
         }
-      }
-    }
-  }
+
+        frame_performance.process_event("post_input");
+
+        frame_performance.process_event("pre_update_camera");
+        update_camera(&mut fps_camera, &input_actions);
+        frame_performance.process_event("post_update_camera");
+
+        frame_performance.process_event("pre_update_world");
+        update_world(&display, &mut world, &mut gui, &input_actions);
+        frame_performance.process_event("post_update_world");
+
+        draw_frame(target_lod, vr_mode, &stereo_mode, vr_display, &display, &window,
+            &mut render_params, &mut world, num_objects, &lights, num_lights, &mut empty,
+            &gamepads, &mut gamepad_models, &mut canvas, &mut frame_performance,
+            &mut render_dimensions, &mut fps_camera, &mut gui, &mut demo, demo_record, show_bbox);
+
+        frame_performance.process_event("frame_end");
+        frame_performance.record_frame_log(sample_number, c.0);
+
+        // quit when demo is done
+        if let Some(d) = demo.as_mut() {
+          if !demo_record && frame_performance.get_frame_number() as usize >= d.entries.len() {
+            break 'main;
+          }
+        }
+      } // main loop
+    } // samples
+  } // configurations
 
   let now = Utc::now().format("%Y-%m-%d-%H-%M-%S");
 

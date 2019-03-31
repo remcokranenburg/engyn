@@ -33,7 +33,9 @@ const TARGET_FRAME_TIMES: [u32; 5] = [
 ];
 
 pub struct LogEntry {
+  pub analysis_target: String,
   pub frame_number: usize,
+  pub sample_number: usize,
   pub event_instants: HashMap<String, Instant>,
   pub level: f32,
   pub weight_resolution: f32,
@@ -94,9 +96,11 @@ impl FramePerformance {
     self.target_lod = targets.2;
   }
 
-  pub fn record_frame_log(&mut self) {
+  pub fn record_frame_log(&mut self, sample_number: usize, analysis_target: &str) {
     self.log.push(LogEntry {
+      analysis_target: analysis_target.to_owned(),
       frame_number: self.frame_count,
+      sample_number: sample_number,
       event_instants: self.event_instants.clone(),
       level: self.level,
       weight_resolution: self.weight_resolution,
@@ -202,20 +206,20 @@ impl FramePerformance {
     ];
 
     let mut log_csv = String::new();
-    log_csv.push_str("Frame,Dropped,TimeStart,TimeEnd,");
+    log_csv.push_str("AnalysisTarget,Frame,Sample,Dropped,TimeStart,TimeEnd,");
     log_csv.push_str(&keys.join(","));
     log_csv.push_str(",Level,WeightResolution,WeightMSAA,WeightLOD,TargetResolution,TargetMSAA,TargetLOD\n");
 
     let first_frame_instant = self.log.first().unwrap().event_instants.get("frame_start").unwrap();
 
     for (i, frame) in self.log.iter().enumerate() {
-      let frame_time = self.get_actual_frame_time(i);
-      let fps = 1_000_000_000f64 / (frame_time as f64);
       let frame_start = frame.event_instants.get("frame_start").unwrap().duration_since(*first_frame_instant);
       let frame_end = frame.event_instants.get("frame_end").unwrap().duration_since(*first_frame_instant);
 
-      write!(&mut log_csv, "{},{},{},{},",
+      write!(&mut log_csv, "{},{},{},{},{},{},",
+          frame.analysis_target,
           frame.frame_number,
+          frame.sample_number,
           if self.is_frame_dropped(i) { 1 } else { 0 },
           frame_start.as_secs() * 1000 + frame_start.subsec_millis() as u64,
           frame_end.as_secs() * 1000 + frame_end.subsec_millis() as u64).unwrap();

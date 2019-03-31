@@ -69,19 +69,6 @@ impl Quality {
     }
   }
 
-  pub fn set_weights(&mut self, values: (f32, f32, f32)) {
-    *self.weight_resolution.borrow_mut() = values.0;
-    *self.weight_msaa.borrow_mut() = values.1;
-    *self.weight_lod.borrow_mut() = values.2;
-  }
-
-  pub fn set_target_levels(&mut self, values: (f32, f32, f32)) {
-    self.adaptive_quality = false;
-    *self.weight_resolution.borrow_mut() = values.0;
-    *self.weight_msaa.borrow_mut() = values.1;
-    *self.weight_lod.borrow_mut() = values.2;
-  }
-
   pub fn get_target_levels(&self) -> (f32, f32, f32) {
     let weight_resolution = *self.weight_resolution.borrow();
     let weight_msaa = *self.weight_msaa.borrow();
