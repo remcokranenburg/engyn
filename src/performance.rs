@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use std::f32;
 use std::fmt::Write;
 use std::time::Instant;
+use webvr::VRDisplayPtr;
 
 use quality::Quality;
 
@@ -44,6 +45,7 @@ pub struct LogEntry {
   pub target_resolution: f32,
   pub target_msaa: f32,
   pub target_lod: f32,
+  pub quality_stats: (u32, u32, f32),
 }
 
 pub struct FramePerformance {
@@ -58,6 +60,7 @@ pub struct FramePerformance {
   target_resolution: f32,
   target_msaa: f32,
   target_lod: f32,
+  quality_stats: (u32, u32, f32),
 }
 
 impl FramePerformance {
@@ -74,6 +77,7 @@ impl FramePerformance {
       target_resolution: 0.0,
       target_msaa: 0.0,
       target_lod: 0.0,
+      quality_stats: (0, 0, 0.0),
     }
   }
 
@@ -94,6 +98,7 @@ impl FramePerformance {
     self.target_resolution = targets.0;
     self.target_msaa = targets.1;
     self.target_lod = targets.2;
+    self.quality_stats = quality.quality_stats;
   }
 
   pub fn record_frame_log(&mut self, sample_number: usize, analysis_target: &str) {
@@ -109,6 +114,7 @@ impl FramePerformance {
       target_resolution: self.target_resolution,
       target_msaa: self.target_msaa,
       target_lod: self.target_lod,
+      quality_stats: self.quality_stats,
     });
     self.frame_count += 1;
   }
@@ -139,8 +145,27 @@ impl FramePerformance {
     remaining
   }
 
-  pub fn get_predicted_remaining_time(&self) -> u32 {
-    let remaining_time = self.get_remaining_time();
+  pub fn get_remaining_time_ovr(&self, vr_display: &VRDisplayPtr) -> Result<u32, &str> {
+      let timing = match vr_display.borrow().get_timing() {
+          Ok(t) => t,
+          Err(_) => return Err("nope"),
+      };
+
+      Ok(f32::max(0.0, timing.compositor_idle_cpu_ms * 1000f32 * 1000f32) as u32)
+  }
+
+  pub fn get_predicted_remaining_time(&self, vr_display: Option<&VRDisplayPtr>) -> u32 {
+    if self.frame_count < 1 {
+      return 11_111_111u32;
+    }
+
+    let remaining_time = match vr_display {
+      Some(vr_display) => match self.get_remaining_time_ovr(vr_display) {
+        Ok(remaining) => remaining,
+        Err(_) => self.get_remaining_time(),
+      },
+      None => self.get_remaining_time(),
+    };
 
     // predict next remaining time
     remaining_time
@@ -181,8 +206,8 @@ impl FramePerformance {
 
     let dropped = closest_frame_time > target_frame_time;
 
-    println!("frame: {}, actual: {}, closest: {}, target: {}, diff: {}, dropped: {}",
-      frame_number, actual_frame_time, closest_frame_time, target_frame_time, lowest_diff, dropped);
+    // println!("frame: {}, actual: {}, closest: {}, target: {}, diff: {}, dropped: {}",
+    //   frame_number, actual_frame_time, closest_frame_time, target_frame_time, lowest_diff, dropped);
 
     dropped
   }
@@ -208,7 +233,7 @@ impl FramePerformance {
     let mut log_csv = String::new();
     log_csv.push_str("AnalysisTarget,Frame,Sample,Dropped,TimeStart,TimeEnd,");
     log_csv.push_str(&keys.join(","));
-    log_csv.push_str(",Level,WeightResolution,WeightMSAA,WeightLOD,TargetResolution,TargetMSAA,TargetLOD\n");
+    log_csv.push_str(",Level,WeightResolution,WeightMSAA,WeightLOD,TargetResolution,TargetMSAA,TargetLOD,TargetFrameTime,PredictedRemainingTime,RatioRemaining\n");
 
     let first_frame_instant = self.log.first().unwrap().event_instants.get("frame_start").unwrap();
 
@@ -221,22 +246,25 @@ impl FramePerformance {
           frame.frame_number,
           frame.sample_number,
           if self.is_frame_dropped(i) { 1 } else { 0 },
-          frame_start.as_secs() * 1000 + frame_start.subsec_millis() as u64,
-          frame_end.as_secs() * 1000 + frame_end.subsec_millis() as u64).unwrap();
+          frame_start.as_secs() * 1_000_000_000 + frame_start.subsec_nanos() as u64,
+          frame_end.as_secs() * 1_000_000_000 + frame_end.subsec_nanos() as u64).unwrap();
       for key in &keys {
         let frame_start_instant = frame.event_instants.get("frame_start").unwrap();
         let event_instant = frame.event_instants.get(*key).expect(&format!("{} not found", key));
         let duration = event_instant.duration_since(*frame_start_instant).subsec_nanos();
         write!(&mut log_csv, "{},", duration).unwrap();
       }
-      write!(&mut log_csv, "{},{},{},{},{},{},{}\n",
+      write!(&mut log_csv, "{},{},{},{},{},{},{},{},{},{}\n",
           frame.level,
           frame.weight_resolution,
           frame.weight_msaa,
           frame.weight_lod,
           frame.target_resolution,
           frame.target_msaa,
-          frame.target_lod).unwrap();
+          frame.target_lod,
+          frame.quality_stats.0,
+          frame.quality_stats.1,
+          frame.quality_stats.2).unwrap();
     }
     log_csv
   }

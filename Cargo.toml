@@ -14,7 +14,7 @@ glium = { version = "*", features = ["glutin"] }
 image = "*"
 itertools = "*"
 rand = "*"
-rust-webvr = "*"
+rust-webvr = { path = "../rust-webvr/rust-webvr" }
 serde = "*"
 serde_derive = "*"
 serde_yaml = "*"

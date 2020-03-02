@@ -19,6 +19,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::f32;
+use webvr::VRDisplayPtr;
+
 use performance::FramePerformance;
 
 pub struct Quality {
@@ -27,6 +29,7 @@ pub struct Quality {
   pub weight_resolution: Rc<RefCell<f32>>,
   pub weight_msaa: Rc<RefCell<f32>>,
   pub weight_lod: Rc<RefCell<f32>>,
+  pub quality_stats: (u32, u32, f32),
 }
 
 impl Quality {
@@ -39,20 +42,22 @@ impl Quality {
       weight_resolution: Rc::new(RefCell::new(weight_resolution)),
       weight_msaa: Rc::new(RefCell::new(weight_msaa)),
       weight_lod: Rc::new(RefCell::new(weight_lod)),
+      quality_stats: (0, 0, 0.0)
     }
   }
 
-  pub fn set_level(&self, frame_performance: &FramePerformance) {
-    let predicted_remaining_time = frame_performance.get_predicted_remaining_time();
+  pub fn set_level(&mut self, frame_performance: &FramePerformance, vr_display: Option<&VRDisplayPtr>) {
+    let predicted_remaining_time = frame_performance.get_predicted_remaining_time(vr_display);
     let target_frame_time = frame_performance.get_target_frame_time();
-    let ratio_remaining = predicted_remaining_time as f32 / target_frame_time as f32;
+    let ratio_remaining = f32::max(0.0, predicted_remaining_time as f32 / target_frame_time as f32);
 
     // println!("target: {}, remaining: {}, ratio: {}", target_frame_time, predicted_remaining_time, ratio_remaining);
 
-    const EMERGENCY_ZONE: f32 = 0.05;
-    const DANGER_ZONE: f32 = 0.1;
-    const SAFE_ZONE: f32 = 0.3;
-    const EASY_ZONE: f32 = 0.8;
+    const EMERGENCY_ZONE: f32 = 0.05;   // 0.00 - 0.05
+    const DANGER_ZONE: f32 = 0.1;       // 0.05 - 0.10
+    const SAFE_ZONE: f32 = 0.3;         // 0.10 - 0.30
+    const EASY_ZONE: f32 = 0.8;         // 0.30 - 0.80
+    // IDLE_ZONE                           0.80 - 1.00
 
     let original_level = *self.level.borrow();
 
@@ -67,6 +72,8 @@ impl Quality {
     } else {
       *self.level.borrow_mut() = f32::min(original_level * 2.0, 1.0);
     }
+
+    self.quality_stats = (target_frame_time, predicted_remaining_time, ratio_remaining);
   }
 
   pub fn get_target_levels(&self) -> (f32, f32, f32) {

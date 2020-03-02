@@ -322,8 +322,9 @@ fn draw_frame(
       height: height as i32,
     };
 
-    canvas.get_resolved_framebuffer(display).unwrap()
-      .blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
+    let mut framebuffer = canvas.get_resolved_framebuffer(display).unwrap();
+
+    framebuffer.blit_color(&src_rect, &target, &blit_target, MagnifySamplerFilter::Linear);
 
     frame_performance.process_event("post_draw");
 
@@ -407,6 +408,7 @@ fn main() {
 
   let vr_displays = vr.get_displays();
   let vr_display = vr_displays.get(0);
+
   let vr_mode = vr_display.is_some();
 
   let mut events_loop = EventsLoop::new();
@@ -639,7 +641,9 @@ fn main() {
     }));
   }
 
-  let configurations = if benchmarking {
+  let configurations = if baseline && weights.len() == 3 {
+    vec![("none", (weights[0], weights[1], weights[2]))]
+  } else if benchmarking {
     let mut c = Vec::new();
     let seed = [
         4, 8, 15, 16, 23, 42,
@@ -652,7 +656,7 @@ fn main() {
     let mut rng = Hc128Rng::from_seed(seed);
 
     for _ in 0..num_configurations {
-      if weights.len() >= 3 {
+      if weights.len() == 3 {
         // if we set some fixed weights on the command line, we want to benchmark using those
         let mut configuration = rng.gen::<(f32, f32, f32)>();
         if weights[0] >= 0.0 && weights[0] <= 1.0 {
@@ -692,7 +696,8 @@ fn main() {
   }
 
   for c in &configurations {
-    for sample_number in 0..num_samples {
+    for sample_number in 0..if benchmarking { num_samples } else { 1 } {
+      println!("Running sample {}", sample_number);
       frame_performance.reset_frame_count();
 
       if benchmarking {
@@ -701,9 +706,19 @@ fn main() {
 
       'main: loop {
         let (target_resolution, target_msaa, target_lod) = if baseline {
-          ((c.1).0, (c.1).1, (c.1).2)
+          if benchmarking {
+            ((c.1).0, (c.1).1, (c.1).2)
+          } else if weights.len() >= 3 {
+            (weights[0], weights[1], weights[2])
+          } else {
+            (
+                *quality.weight_resolution.borrow(),
+                *quality.weight_msaa.borrow(),
+                *quality.weight_lod.borrow()
+            )
+          }
         } else {
-          quality.set_level(&frame_performance);
+          quality.set_level(&frame_performance, vr_display);
           let targets = quality.get_target_levels();
           (targets.0, targets.1, targets.2)
         };
@@ -761,6 +776,15 @@ fn main() {
             break 'main;
           }
         }
+
+        // let timing = vr_display.unwrap().borrow().get_timing().unwrap();
+        // println!("presubmit = {}, postsubmit = {}, totalrender = {}, idle = {}, intvl = {}",
+        //     timing.pre_submit_gpu_ms,
+        //     timing.post_submit_gpu_ms,
+        //     timing.total_render_gpu_ms, // total render time on GPU
+        //     timing.compositor_idle_cpu_ms, // CPU idle time
+        //     timing.client_frame_interval_ms,
+        // );
       } // main loop
     } // samples
   } // configurations
@@ -789,7 +813,7 @@ fn main() {
         let step_size = d.entries.len() / demo_length as usize;
 
         for entry in d.entries.iter().step(step_size) {
-          if new_demo.entries.len() < 180 {
+          if new_demo.entries.len() < demo_length as usize {
             new_demo.entries.push(entry.clone());
           } else {
             break;
