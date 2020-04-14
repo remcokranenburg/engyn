@@ -146,12 +146,9 @@ impl FramePerformance {
   }
 
   pub fn get_remaining_time_ovr(&self, vr_display: &VRDisplayPtr) -> Result<u32, &str> {
-      let timing = match vr_display.borrow().get_timing() {
-          Ok(t) => t,
-          Err(_) => return Err("nope"),
-      };
+      let idle_ms = vr_display.borrow().get_idle_ms();
 
-      Ok(f32::max(0.0, timing.compositor_idle_cpu_ms * 1000f32 * 1000f32) as u32)
+      Ok(f32::max(0.0, idle_ms * 1000f32 * 1000f32) as u32)
   }
 
   pub fn get_predicted_remaining_time(&self, vr_display: Option<&VRDisplayPtr>) -> u32 {

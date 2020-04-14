@@ -2,18 +2,21 @@
 name = "engyn"
 version = "0.1.0"
 authors = ["Remco Kranenburg <remco@burgsoft.nl>"]
+default-run = "engyn"
 
 [dependencies]
 argparse = "*"
-bincode = "*"
+bincode = "0.9"
 cgmath = { version = "*", features = ["serde"] }
 chrono = "*"
-conrod = { version = "*", features = ["glium", "winit"] }
+conrod = { version = "0.57", features = ["glium", "winit"] }
 csv = "1.0.0-beta.5"
-glium = { version = "*", features = ["glutin"] }
+glium = { version = "0.19", features = ["glutin"] }
 image = "*"
 itertools = "*"
 rand = "*"
+rand_hc = "*"
+rand_core = "*"
 rust-webvr = { path = "../rust-webvr/rust-webvr" }
 serde = "*"
 serde_derive = "*"

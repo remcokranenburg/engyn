@@ -26,6 +26,7 @@
               extern crate image;
               extern crate itertools;
               extern crate rand;
+              extern crate rand_hc;
               extern crate rust_webvr as webvr;
 #[macro_use]  extern crate serde_derive;
               extern crate serde_yaml;
@@ -85,7 +86,7 @@ use glium::index::PrimitiveType;
 use glium::uniforms::MagnifySamplerFilter;
 use glium::vertex::VertexBuffer;
 use itertools::Itertools;
-use rand::prng::hc128::Hc128Rng;
+use rand_hc::Hc128Rng;
 use rand::SeedableRng;
 use rand::Rng;
 use std::cell::RefCell;
@@ -776,15 +777,6 @@ fn main() {
             break 'main;
           }
         }
-
-        // let timing = vr_display.unwrap().borrow().get_timing().unwrap();
-        // println!("presubmit = {}, postsubmit = {}, totalrender = {}, idle = {}, intvl = {}",
-        //     timing.pre_submit_gpu_ms,
-        //     timing.post_submit_gpu_ms,
-        //     timing.total_render_gpu_ms, // total render time on GPU
-        //     timing.compositor_idle_cpu_ms, // CPU idle time
-        //     timing.client_frame_interval_ms,
-        // );
       } // main loop
     } // samples
   } // configurations
