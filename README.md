@@ -13,6 +13,8 @@ algorithm would simplify the objects.
 
 ## How do I run this?
 
+The download below is way outdated. Just build it from source!
+
 There is an experimental [download](https://bitbucket.org/Remco47/engyn/downloads/engyn-0.1.0-windows.zip)
 (80MB) available for Windows. Unzip it and play with two provided scenes: the default scene that is
 used in development to try things out, and the well-known Sponza Palace scene. A Vive works, but is
